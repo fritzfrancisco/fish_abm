@@ -1,3 +1,3 @@
-g++ fish_mod.cpp -o opencv.out `pkg-config --cflags --libs opencv`
-./opencv.out
-rm opencv.out
+g++ fish_mod.cpp -o fish_abm.out `pkg-config --cflags --libs opencv`
+./fish_abm.out
+rm fish_abm.out
