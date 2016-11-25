@@ -13,7 +13,7 @@
 using namespace std;
 using namespace cv;
 
-#define w 550
+#define w 500
 
 class individuals{
 
@@ -58,8 +58,8 @@ int main(){
   //   Mat fish_image = Mat::zeros(w, w,CV_8UC3);
   // }
   Mat fish_image = Mat::zeros(w,2*w,CV_8UC3);
-  drawfish(fish,fish_image);
   move(fish);
+  drawfish(fish,fish_image);
 
   imshow(fish_window,fish_image);
   waitKey(100);
@@ -85,7 +85,7 @@ void move(individuals& inds){
   for(int i = 0; i < inds.n;i++){
 
     if(inds.state[i] == 1 && inds.lag[i] == 0){
-      inds.coords[i][0] = inds.coords[i][0] + 40; // swim distance
+      inds.coords[i][0] = inds.coords[i][0] + 50; // swim distance
       // inds.coords[i][1] = inds.coords[i][1] + 10;
       // inds.coords[i][0] = inds.coords[i][0] + rand()%15;
       // inds.coords[i][1] = inds.coords[i][1] + rand()%15;
@@ -142,6 +142,7 @@ void drawfish(individuals& inds, Mat fish_image){
     // Scalar fishcol(100,inds.coords[i][1],inds.coords[i][0]);
     // Scalar fishcol(0,0,255);
     Scalar fishcol(inds.colors[i][0],inds.colors[i][1],inds.colors[i][2]);
+
     Point center(inds.coords[i][0],inds.coords[i][1]);
     Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] - 10 * sin(inds.dir[i] * M_PI / 180));
     Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] + 10 * sin(inds.dir[i] * M_PI / 180));
@@ -153,7 +154,6 @@ void drawfish(individuals& inds, Mat fish_image){
 int follow(individuals inds,int id){
   // count number of inds in front (x-axis) of id individual
   int c = 0;
-
   double idcoords[2] = {inds.coords[id][0],inds.coords[id][1]}; // includes corrected coordinates for each fish per fish [id]
 
   for (int i = 0; i < inds.n;i++){
