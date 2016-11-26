@@ -98,7 +98,7 @@ void initialize(Individuals& inds, int n, int dim){
 		inds.color[i][0] = 120 + rand() % 120;
 		inds.color[i][1] = 120 + rand() % 120;
 		inds.color[i][2] = 120 + rand() % 120;
-		inds.dir[i] = 0; // rand() % 360; // direction
+		inds.dir[i] = rand() % 360;  // direction
 		for (int u = 0; u < inds.dim; u++){
 			if (u == 0) {
 				inds.coords[i][u] = w / 8 + rand() % 100 - 50; // x coord
