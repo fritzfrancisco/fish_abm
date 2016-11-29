@@ -15,7 +15,7 @@ using namespace cv;
 
 #define w 1400
 #define h 700
-#define num 10
+#define num 200
 
 class individuals{
 
@@ -56,9 +56,9 @@ int main(){
   Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
   individuals fish;
-  initialize(fish,num,2,5,4,2); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
+  initialize(fish,num,2,5,4,5); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
-  for(int z = 0; z < 1000; z++){
+  for(int z = 0; z < 10000; z++){
   Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
   move(fish);
@@ -80,7 +80,7 @@ void move(individuals& inds){
       socialdir = socialdir + rand()%90+315;
 
       if(inds.lag[id] == 0){  // individual lag phase
-        inds.lag[id] = rand()%40;
+        inds.lag[id] = rand()%5;
       }
       else{
       inds.lag[id] = inds.lag[id]-1;
@@ -136,7 +136,7 @@ void drawfish(individuals& inds, Mat fish_image){
     Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] + 10 * sin(inds.dir[i] * M_PI / 180));
 
     circle(fish_image,center,1,fishcol,1,CV_AA,0);            // visualize center
-    circle(fish_image,center,30,fishcol,1,CV_AA,0);           // visualize comfort zone
+    // circle(fish_image,center,50,fishcol,1,CV_AA,0);           // visualize comfort zone
     // circle(fish_image,center,200,fishcol,1,CV_AA,0);       // visualize visual distance
     arrowedLine(fish_image,tail,head,fishcol,1,CV_AA,0,0.1);  // draw fish
 
@@ -277,7 +277,7 @@ int c = follow(inds,id,fov);                    // counter for fish in field of 
         repulsion = 1 / (0.01*pow(dist,2)+1); // weighted repulsion impact of fish in proximity (200) (f(x) = 1/(0.01x^2+1))
       }
 
-      if(angle < (fov/2) && dist < 100){
+      if(angle < (fov/2) && dist < 50){       // if no individual is detected in radius group attraction takes place
         socialfactor = 1;
       }
 
@@ -291,56 +291,88 @@ int c = follow(inds,id,fov);                    // counter for fish in field of 
       }
     }
  // get new direction according to social factor:
-  switch(socialfactor){
-    case 0:
-        if(c != 0){
-          coordsum[0] = coordsum[0]/c + inds.coords[id][0];
-          coordsum[1] = coordsum[1]/c + inds.coords[id][1];
-        }
-        else{
-          coordsum[0] = coordsum[0] + inds.coords[id][0];
-          coordsum[1] = coordsum[1] + inds.coords[id][1];
-        }
+ double leftcoords[2];  // new possible coords after left turn
+ double rightcoords[2]; // new possible coords after right turn
 
-        double leftcoords[2];  // new possible coords after left turn
-        double rightcoords[2]; // new possible coords after right turn
-// left turn:
-        leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * M_PI / 180); // new x coord after left turn of 90 degrees
-        leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * M_PI / 180); // new y coord
-// turn right:
-        rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * M_PI / 180); // new x coord after right turn of 90 degrees
-        rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * M_PI / 180); // new y coord
-
-        double avoiddistl = sqrt(pow(leftcoords[0] - coordsum[0],2) + pow(leftcoords[1] - coordsum[1],2));
-        double avoiddistr = sqrt(pow(rightcoords[0] - coordsum[0],2) + pow(rightcoords[1] - coordsum[1],2));
-
-        if(avoiddistl > avoiddistr){
-          newdir = inds.dir[id] - 45;
-        }
-        else if(avoiddistl == avoiddistr){
-          newdir = inds.dir[id] + (rand()%2 - 0.5) * 90; // +- 90 degrees
-        }
-        else{
-          newdir = inds.dir[id] + 45;
-        }
-      // case 1:
-    // case 2:
-    //     double neighbordistl = sqrt(pow(inds.coords[nearestvisid][0],2) + pow(inds.coords[nearestvisid][1],2));
-    //     double neighbordistr = sqrt(pow(inds.coords[nearestvisid][0],2) + pow(inds.coords[nearestvisid][1],2));
-    //     double newdir = newdirleft;
-    //     double newdir = newdirright;
-    //
-    //     while(){
-    //       newdirleft = newdirleft - 10;
-    //       leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * M_PI / 180);
-    //       leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * M_PI / 180);
-    //
-    //       newdirright = newdirright + 10;
-    //       rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * M_PI / 180);
-    //       rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * M_PI / 180);
-    //
-    //       neighbordistl = sqrt(pow(leftcoords[0] - coordsum[0],2) + pow(leftcoords[1] - coordsum[1],2));
-    //       neighbordistr = sqrt(pow(rightcoords[0] - coordsum[0],2) + pow(rightcoords[1] - coordsum[1],2));
+if(socialfactor == 0){
+    if(c != 0){
+      coordsum[0] = coordsum[0]/c;
+      coordsum[1] = coordsum[1]/c;
     }
+// left turn:
+    leftcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * M_PI / 180); // new x coord after left turn of 90 degrees
+    leftcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * M_PI / 180); // new y coord
+// turn right:
+    rightcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * M_PI / 180); // new x coord after right turn of 90 degrees
+    rightcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * M_PI / 180); // new y coord
+
+    double avoiddistl = sqrt(pow(leftcoords[0] - coordsum[0],2) + pow(leftcoords[1] - coordsum[1],2));
+    double avoiddistr = sqrt(pow(rightcoords[0] - coordsum[0],2) + pow(rightcoords[1] - coordsum[1],2));
+
+    if(avoiddistl > avoiddistr){
+      newdir = inds.dir[id] - 45;
+    }
+    else if(avoiddistl == avoiddistr){
+      newdir = inds.dir[id] + (rand()%2 - 0.5) * 90; // +- 90 degrees
+    }
+    else{
+      newdir = inds.dir[id] + 45;
+    }
+  }
+
+if(socialfactor == 2){
+    double neighbordistl[2];
+    neighbordistl[0] = sqrt(pow(inds.coords[nearestvisid][0],2) + pow(inds.coords[nearestvisid][1],2));
+    neighbordistl[1] = neighbordistl[0];
+
+    double neighbordistr[2];
+    neighbordistr[0] = sqrt(pow(inds.coords[nearestvisid][0],2) + pow(inds.coords[nearestvisid][1],2));
+    neighbordistr[1] = neighbordistr[0];
+
+    double newdirleft = newdir;
+    double newdirright = newdir;
+
+    bool turnleft = 0;
+    bool turnright = 0;
+
+    while(turnleft == 0 && turnright ==0){
+      newdirleft = newdirleft - 10;
+      leftcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * M_PI / 180);
+      leftcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * M_PI / 180);
+
+      newdirright = newdirright + 10;
+      rightcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * M_PI / 180);
+      rightcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * M_PI / 180);
+
+      neighbordistl[1] = sqrt(pow((leftcoords[0] - inds.coords[nearestvisid][0]),2) + pow((leftcoords[1] - inds.coords[nearestvisid][1]),2));
+      neighbordistr[1] = sqrt(pow((rightcoords[0] - inds.coords[nearestvisid][0]),2) + pow((rightcoords[1] - inds.coords[nearestvisid][1]),2));
+
+      if(neighbordistl[1] < neighbordistl[0]){
+        neighbordistl[0] = neighbordistl[1];
+      }else{
+        turnleft = 1;
+      }
+
+      if(neighbordistr[1] < neighbordistr[0]){
+        neighbordistr[0] = neighbordistr[1];
+      }else{
+        turnright = 1;
+      }
+    }
+    if(turnleft == 1 && turnright == 1){
+      if(rand()%2 == 0){
+        newdir = newdirleft;
+      }
+      else{
+        newdir = newdirright;
+      }
+    }
+    else if (turnleft == 1 && turnright == 0){
+  		newdir = newdirleft;
+  	}
+  	else{
+  		newdir = newdirright;
+  	}
+  }
   return newdir;
 }
