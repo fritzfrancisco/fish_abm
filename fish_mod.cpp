@@ -6,10 +6,10 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-#define w 700
+#define w 1300
 #define h 700
 #define PI 3.14159265
-#define num 8
+#define num 10
 
 using namespace std;
 using namespace cv;
@@ -35,7 +35,7 @@ int follow(Individuals inds, int id, int fov); // fov: field of view
 bool state(Individuals inds, int id);
 double collision(Individuals inds, int id, double newdir);
 void correctangle(double& dir);
-double avoidance(Individuals inds, int id, int fov);
+double social(Individuals inds, int id, int fov);
 
 int main(){
 	
@@ -46,7 +46,7 @@ int main(){
 		
 	Individuals fish;
 	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow 
-	initialize(fish, num, 2, 5, 4, 50);
+	initialize(fish, num, 2, 2, 4, 2);
 	
 	for (int z = 0; z < 1500; z++){
 		Mat fish_image = Mat::zeros(h, w, CV_8UC3);
@@ -64,20 +64,20 @@ void move(Individuals& inds){
 		double dir = inds.dir[id];
 		
 		inds.state[id] = state(inds, id);
-		double avoiddir = avoidance(inds, id, 330);
+		double socialdir = social(inds, id, 330);
  
-	//	if(inds.state[id] == 0 && avoiddir == inds.dir[id]){
-	//		avoiddir = avoiddir + rand() % 91 - 45; // feeding, new fish direction
-	//		if(inds.lag[id] == 0){
-	//			inds.lag[id] = 10;
-	//		}
-	//		else{
-	//			inds.lag[id] = inds.lag[id] - 1;			
-	//		}
-	//	}		
+		if(inds.state[id] == 0 && socialdir == inds.dir[id]){
+			socialdir = socialdir + rand() % 91 - 45; // feeding, new fish direction
+			if(inds.lag[id] == 0){
+				inds.lag[id] = 10;
+			}
+			else{
+				inds.lag[id] = inds.lag[id] - 1;			
+			}
+		}		
 	//	correctangle(dir);	
 
-		double coldir = avoiddir; // collision(inds, id, avoiddir);		
+		double coldir = collision(inds, id, socialdir);		
 
 		inds.coords[id][0] = inds.coords[id][0] + (inds.state[id] * inds.dspeed + 1) * inds.speed * cos(coldir * PI / 180);
 		inds.coords[id][1] = inds.coords[id][1] + (inds.state[id] * inds.dspeed + 1) * inds.speed * sin(coldir * PI / 180);
@@ -115,8 +115,10 @@ void drawfish(Individuals inds, Mat image){
 		Point center(inds.coords[i][0], inds.coords[i][1]);
 		Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] - 10 * sin(inds.dir[i] * PI / 180));
 		Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] + 10 * sin(inds.dir[i] * PI / 180));
-		circle(image, center, 2, fishcolor, 1, 8, 0);
-		arrowedLine(image, tail, head, fishcolor, 1, 8, 0, 0.1);
+		circle(image, center, 2, fishcolor, 1, CV_AA, 0);
+		circle(image, center, 30, fishcolor, 1, CV_AA, 0);
+		// circle(image, center, 200, fishcolor, 1, CV_AA, 0);
+		arrowedLine(image, tail, head, fishcolor, 1, CV_AA, 0, 0.2);
 	}
 }
 
@@ -148,67 +150,107 @@ int follow(Individuals inds, int id, int fov){
 	return c;
 }
 
-double avoidance(Individuals inds, int id, int fov){
+double social(Individuals inds, int id, int fov){
 	double dirvector[2]; // direction vector (fish id) of lenth 1
 	dirvector[0] = cos(inds.dir[id] * PI / 180);
 	dirvector[1] = sin(inds.dir[id] * PI / 180);
-	double angle[inds.n]; // angle between fish id direction vector and fish i pos vector
-	double dist[inds.n]; // absolut distance between fish i and fish id
+	double angle; // angle between fish id direction vector and fish i pos vector
+	double dist; // absolut distance between fish i and fish id
 	int c = follow(inds, id, fov); // counter for fish in visual radius
-	double repulsion[inds.n];
+	double repulsion; // repulsion value of other fish..
 	double coordsum[2] = {0, 0};
-	bool avoid = 0; // switch for avoidance behavior, 0 for no avoidance
-	double newdir; // angle after avoidance behavior
+	bool socialfactor = 2; // switch for avoidance behavior, 0 for no avoidance
+	double newdir = inds.dir[id]; // angle after avoidance behavior
+	double nearestvisdist = 200; // initializes distance of nearest seeable neighbour
+	int nearestvisid; // id of nearest seeable neighbor
+
+	// check distances for all other fish and determine social factor (0 = avoid, 1 = correct angle, 2 = reconnect with others)
 	for (int i = 0; i < inds.n; i++){
-		repulsion[i] = 0;
+		repulsion = 0;
 		inds.coords[i][0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0
 		inds.coords[i][1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
-		dist[i] = sqrt(pow(inds.coords[i][0], 2) + pow(inds.coords[i][1], 2)); // calculate absolute distances of respective i to id
+		dist = sqrt(pow(inds.coords[i][0], 2) + pow(inds.coords[i][1], 2)); // calculate absolute distances of respective i to id
 
 		if (i != id){
 			// dot product(direction vector of id, position vector of i)
-			angle[i] =  acos((dirvector[0] * inds.coords[i][0] + dirvector[1] * inds.coords[i][1]) / dist[i]) * 180 / PI; 
+			angle =  acos((dirvector[0] * inds.coords[i][0] + dirvector[1] * inds.coords[i][1]) / dist) * 180 / PI;
+			if (dist < nearestvisdist){
+				nearestvisdist = dist;
+				nearestvisid = i;			
+			}
 		}
 		else{
-			angle[i] = 180; // never see yourself!	
+			angle = 180; // never see yourself!	
 		}
 
-		if (angle[i] < (fov / 2) && dist[i] < 200){
-			repulsion[i] = 1 / (0.01 * pow(dist[i], 2) + 1); // f(x) = 1 / (0.001 * x^2 + 1), also see google
+		if (angle < (fov / 2) && dist < 200){
+			repulsion = 1 / (0.01 * pow(dist, 2) + 1); // f(x) = 1 / (0.001 * x^2 + 1), also see google
 		}
-
-		if (angle[i] < (fov / 2) && dist[i] < 20){
-			avoid = 1;
+		
+		if (angle < (fov / 2) && dist < 100){
+			socialfactor = 1;
+		}
+		else if (angle < (fov / 2) && dist < 30){
+			socialfactor = 0;
 		}
 		
 		if (i != id){
-			coordsum[0] = coordsum[0] + inds.coords[i][0] * repulsion[i];
-			coordsum[1] = coordsum[1] + inds.coords[i][1] * repulsion[i];		
+			coordsum[0] = coordsum[0] + inds.coords[i][0] * repulsion;
+			coordsum[1] = coordsum[1] + inds.coords[i][1] * repulsion;		
 		}
 	}
-	coordsum[0] = coordsum[0] / c + inds.coords[id][0]; // c can be 0!
-	coordsum[1] = coordsum[1] / c + inds.coords[id][1];
+	
+	// get a new direction according to social factor
+	switch (socialfactor){
+		case 0:
+			if (c != 0){
+				coordsum[0] = coordsum[0] / c + inds.coords[id][0];
+				coordsum[1] = coordsum[1] / c + inds.coords[id][1];
+			}
+			else{
+				coordsum[0] = coordsum[0] + inds.coords[id][0];
+				coordsum[1] = coordsum[1] + inds.coords[id][1];
+			}
+	
+			double leftcoords[2]; // new possible coords after left turn
+			double rightcoords[2]; // new possible coords after right turn
 
-	double leftcoords[2]; // new possible coords after left turn
-	double rightcoords[2]; // new possible coords after right turn
+			leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * PI / 180);
+			leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * PI / 180);
 
-	leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * PI / 180); // new x coord after left turn
-	leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * PI / 180); // new y coord
+			rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * PI / 180);
+			rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * PI / 180);
 
-	rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * PI / 180); // new x coord after right turn
-	rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * PI / 180); // new y coord
+			double avoiddistl = sqrt(pow((leftcoords[0] - coordsum[0]), 2) + pow((leftcoords[1] - coordsum[1]), 2));
+			double avoiddistr = sqrt(pow((rightcoords[0] - coordsum[0]), 2) + pow((rightcoords[1] - coordsum[1]), 2));
+	
+			if (avoiddistl > avoiddistr){
+				newdir = inds.dir[id] - 45;
+			}
+			else if (avoiddistl == avoiddistr){
+				newdir = inds.dir[id] + (rand() % 2 - 0.5 ) * 90;	
+			}
+			else{
+				newdir = inds.dir[id] + 45;
+			}
+		//case 1:
+		case 2:
+			double neighbordistl = sqrt(pow((inds.coords[nearestvisid[0]], 2) + pow((inds.coords[nearestvisid[1]]), 2));
+			double neighbordistr = sqrt(pow((inds.coords[nearestvisid[0]], 2) + pow((inds.coords[nearestvisid[1]]), 2));
+			double newdirleft = newdir;
+			double newdirright = newdir;
+			while(){
+				newdirleft = newdirleft - 10;	
+				leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * PI / 180);
+				leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * PI / 180);
 
-	double avoidleft = sqrt(pow((leftcoords[0] - coordsum[0]), 2) + pow((leftcoords[1] - coordsum[1]), 2));
-	double avoidright = sqrt(pow((rightcoords[0] - coordsum[0]), 2) + pow((rightcoords[1] - coordsum[1]), 2));
+				newdirright = newdirright + 10;	
+				rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * PI / 180);
+				rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * PI / 180);
 
-	if (avoidleft > avoidright){
-		newdir = inds.dir[id] - 90;
-	}
-	else if (avoidleft == avoidright){
-		newdir = inds.dir[id] + (rand() % 2 - 0.5 ) * 180;	
-	}
-	else{
-		newdir = inds.dir[id] + 90;
+				neighbordistl = sqrt(pow((leftcoords[0] - coordsum[0]), 2) + pow((leftcoords[1] - coordsum[1]), 2));
+				neighbordistr = sqrt(pow((rightcoords[0] - coordsum[0]), 2) + pow((rightcoords[1] - coordsum[1]), 2));
+			}
 	}
 	return newdir;	
 }
@@ -242,11 +284,11 @@ double collision(Individuals inds, int id, double newdir){
 
 	// .. then adjust turn direction and check collision again; repeat until one collision statement (left/right) is 0 (no collision):
 	while(turnleft && turnright){
-		newdirleft = newdirleft - 1;	
+		newdirleft = newdirleft - 10;	
 		leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * PI / 180); // new x coord after left turn
 		leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * PI / 180); // new y coord
 
-		newdirright = newdirright + 1;	
+		newdirright = newdirright + 10;	
 		rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * PI / 180); // new x coord after right turn
 		rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * PI / 180); // new y coord
 
@@ -255,7 +297,15 @@ double collision(Individuals inds, int id, double newdir){
 	}
 	
 	// choose new direction based on false collision statement (no collision in this direction):
-	if (turnleft == 0){
+	if (turnleft == 0 && turnright == 0){
+		if (rand() % 2 == 0){
+			newdir = newdirleft;
+		}
+		else{
+			newdir = newdirright;					
+		}
+	}
+	else if (turnleft == 0 && turnright == 1){
 		newdir = newdirleft;
 	}
 	else{
