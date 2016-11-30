@@ -9,7 +9,7 @@
 #define w 1300
 #define h 700
 #define PI 3.14159265
-#define num 10
+#define num 50
 
 using namespace std;
 using namespace cv;
@@ -82,7 +82,8 @@ void move(Individuals& inds){
 		inds.coords[id][0] = inds.coords[id][0] + (inds.state[id] * inds.dspeed + 1) * inds.speed * cos(coldir * PI / 180);
 		inds.coords[id][1] = inds.coords[id][1] + (inds.state[id] * inds.dspeed + 1) * inds.speed * sin(coldir * PI / 180);
 		
-		inds.dir[id] = coldir;		
+		inds.dir[id] = coldir;
+		cout << "\n";		
 	}
 }
 
@@ -116,8 +117,8 @@ void drawfish(Individuals inds, Mat image){
 		Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] - 10 * sin(inds.dir[i] * PI / 180));
 		Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] + 10 * sin(inds.dir[i] * PI / 180));
 		circle(image, center, 2, fishcolor, 1, CV_AA, 0);
-		circle(image, center, 30, fishcolor, 1, CV_AA, 0);
-		// circle(image, center, 200, fishcolor, 1, CV_AA, 0);
+		//circle(image, center, 30, fishcolor, 1, CV_AA, 0);
+		//circle(image, center, 200, fishcolor, 1, CV_AA, 0);
 		arrowedLine(image, tail, head, fishcolor, 1, CV_AA, 0, 0.2);
 	}
 }
@@ -163,6 +164,7 @@ double social(Individuals inds, int id, int fov){
 	double newdir = inds.dir[id]; // angle after avoidance behavior
 	double nearestvisdist = 200; // initializes distance of nearest seeable neighbour
 	int nearestvisid; // id of nearest seeable neighbor
+	double avoidsum = 0; // sum of all repulsion values for weighting turning angle
 
 	// check distances for all other fish and determine social factor (0 = avoid, 1 = correct angle, 2 = reconnect with others)
 	for (int i = 0; i < inds.n; i++){
@@ -187,69 +189,106 @@ double social(Individuals inds, int id, int fov){
 			repulsion = 1 / (0.01 * pow(dist, 2) + 1); // f(x) = 1 / (0.001 * x^2 + 1), also see google
 		}
 		
-		if (angle < (fov / 2) && dist < 100){
-			socialfactor = 1;
-		}
-		else if (angle < (fov / 2) && dist < 30){
+		if (angle < (fov / 2) && dist < 30){
 			socialfactor = 0;
 		}
+		//else if (angle < (fov / 2) && dist < 30){
+		//	socialfactor = 0;
+		//}
 		
 		if (i != id){
 			coordsum[0] = coordsum[0] + inds.coords[i][0] * repulsion;
-			coordsum[1] = coordsum[1] + inds.coords[i][1] * repulsion;		
+			coordsum[1] = coordsum[1] + inds.coords[i][1] * repulsion;
+			avoidsum = avoidsum + repulsion;		
 		}
 	}
 	
 	// get a new direction according to social factor
-	switch (socialfactor){
-		case 0:
-			if (c != 0){
-				coordsum[0] = coordsum[0] / c + inds.coords[id][0];
-				coordsum[1] = coordsum[1] / c + inds.coords[id][1];
-			}
-			else{
-				coordsum[0] = coordsum[0] + inds.coords[id][0];
-				coordsum[1] = coordsum[1] + inds.coords[id][1];
-			}
+	double leftcoords[2]; // new possible coords after left turn
+	double rightcoords[2]; // new possible coords after right turn
 	
-			double leftcoords[2]; // new possible coords after left turn
-			double rightcoords[2]; // new possible coords after right turn
+	if (socialfactor == 0){
+		//cout << "avoid; ";
+		if (c != 0){
+			coordsum[0] = coordsum[0] / c;
+			coordsum[1] = coordsum[1] / c;
+			avoidsum = avoidsum / c;
+		}
 
-			leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * PI / 180);
-			leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * PI / 180);
+		leftcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] - 90) * PI / 180);
+		leftcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] - 90) * PI / 180);
 
-			rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * PI / 180);
-			rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * PI / 180);
+		rightcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos((inds.dir[id] + 90) * PI / 180);
+		rightcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin((inds.dir[id] + 90) * PI / 180);
 
-			double avoiddistl = sqrt(pow((leftcoords[0] - coordsum[0]), 2) + pow((leftcoords[1] - coordsum[1]), 2));
-			double avoiddistr = sqrt(pow((rightcoords[0] - coordsum[0]), 2) + pow((rightcoords[1] - coordsum[1]), 2));
-	
-			if (avoiddistl > avoiddistr){
-				newdir = inds.dir[id] - 45;
-			}
-			else if (avoiddistl == avoiddistr){
-				newdir = inds.dir[id] + (rand() % 2 - 0.5 ) * 90;	
-			}
-			else{
-				newdir = inds.dir[id] + 45;
-			}
-		//case 1:
-		case 2:
-			double neighbordistl = sqrt(pow((inds.coords[nearestvisid[0]], 2) + pow((inds.coords[nearestvisid[1]]), 2));
-			double neighbordistr = sqrt(pow((inds.coords[nearestvisid[0]], 2) + pow((inds.coords[nearestvisid[1]]), 2));
+		double avoiddistl = sqrt(pow(leftcoords[0] - coordsum[0], 2) + pow(leftcoords[1] - coordsum[1], 2));
+		double avoiddistr = sqrt(pow(rightcoords[0] - coordsum[0], 2) + pow(rightcoords[1] - coordsum[1], 2));
+
+		if (avoiddistl > avoiddistr){
+			newdir = inds.dir[id] - 90 * avoidsum;
+		}
+		else if (avoiddistl == avoiddistr){
+			newdir = inds.dir[id] + (rand() % 2 - 0.5 ) * 180 * avoidsum;	
+		}
+		else{
+			newdir = inds.dir[id] + 90 * avoidsum;
+		}
+	}
+
+	if (socialfactor == 2){
+			cout << "attraction; ";
+			double neighbordistl[2];
+			neighbordistl[0] = sqrt(pow(inds.coords[nearestvisid][0], 2) + pow(inds.coords[nearestvisid][1], 2));
+			neighbordistl[1] = neighbordistl[0];
+			double neighbordistr[2];
+			neighbordistr[0] = sqrt(pow(inds.coords[nearestvisid][0], 2) + pow(inds.coords[nearestvisid][1], 2));
+			neighbordistr[1] = neighbordistl[0];
 			double newdirleft = newdir;
 			double newdirright = newdir;
-			while(){
+
+			bool turnleft = 0;
+			bool turnright = 0;
+			
+			while(turnleft == 0 && turnright == 0){
 				newdirleft = newdirleft - 10;	
-				leftcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * PI / 180);
-				leftcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * PI / 180);
+				leftcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * PI / 180);
+				leftcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * PI / 180);
 
 				newdirright = newdirright + 10;	
-				rightcoords[0] = inds.coords[id][0] + (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * PI / 180);
-				rightcoords[1] = inds.coords[id][1] + (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * PI / 180);
+				rightcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * PI / 180);
+				rightcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * PI / 180);
 
-				neighbordistl = sqrt(pow((leftcoords[0] - coordsum[0]), 2) + pow((leftcoords[1] - coordsum[1]), 2));
-				neighbordistr = sqrt(pow((rightcoords[0] - coordsum[0]), 2) + pow((rightcoords[1] - coordsum[1]), 2));
+				neighbordistl[1] = sqrt(pow(leftcoords[0] - inds.coords[nearestvisid][0], 2) + pow(leftcoords[1] - inds.coords[nearestvisid][1], 2));
+				neighbordistr[1] = sqrt(pow(rightcoords[0] - inds.coords[nearestvisid][0], 2) + pow(rightcoords[1] - inds.coords[nearestvisid][1], 2));
+				
+				if (neighbordistl[1] < neighbordistl[0]){
+					neighbordistl[0] = neighbordistl[1];
+				}
+				else{
+					turnleft = 1;					
+				}
+				
+				if (neighbordistr[1] < neighbordistr[0]){
+					neighbordistr[0] = neighbordistr[1];
+				}
+				else{
+					turnright = 1;					
+				}
+			}
+
+			if (turnleft == 1 && turnright == 1){
+				if (rand() % 2 == 0){
+					newdir = newdirleft;
+				}
+				else{
+					newdir = newdirright;					
+				}
+			}
+			else if (turnleft == 1 && turnright == 0){
+				newdir = newdirleft;
+			}
+			else{
+				newdir = newdirright;		
 			}
 	}
 	return newdir;	
