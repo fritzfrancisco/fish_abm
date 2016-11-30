@@ -6,10 +6,10 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-#define w 1300
-#define h 700
+#define w 500
+#define h 500
 #define PI 3.14159265
-#define num 50
+#define num 4
 
 using namespace std;
 using namespace cv;
@@ -34,7 +34,8 @@ void drawfish(Individuals inds, Mat image);
 int follow(Individuals inds, int id, int fov); // fov: field of view
 bool state(Individuals inds, int id);
 double collision(Individuals inds, int id, double newdir);
-void correctangle(double& dir);
+double correctangle(double dir);
+double getangle(Individuals inds, int id, double point[2]);
 double social(Individuals inds, int id, int fov);
 
 int main(){
@@ -46,14 +47,15 @@ int main(){
 		
 	Individuals fish;
 	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow 
-	initialize(fish, num, 2, 2, 4, 2);
+	initialize(fish, num, 2, 3, 4, 1000);
 	
-	for (int z = 0; z < 1500; z++){
+	for (int z = 0; z < 666; z++){
+		cout << "step " << z << "\n";
 		Mat fish_image = Mat::zeros(h, w, CV_8UC3);
 		drawfish(fish, fish_image);
 		move(fish);
 		imshow(fish_window, fish_image);
-		waitKey( 30 );
+		waitKey(  );
 
 	}
 	return(0);
@@ -83,7 +85,6 @@ void move(Individuals& inds){
 		inds.coords[id][1] = inds.coords[id][1] + (inds.state[id] * inds.dspeed + 1) * inds.speed * sin(coldir * PI / 180);
 		
 		inds.dir[id] = coldir;
-		cout << "\n";		
 	}
 }
 
@@ -117,8 +118,8 @@ void drawfish(Individuals inds, Mat image){
 		Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] - 10 * sin(inds.dir[i] * PI / 180));
 		Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] + 10 * sin(inds.dir[i] * PI / 180));
 		circle(image, center, 2, fishcolor, 1, CV_AA, 0);
-		//circle(image, center, 30, fishcolor, 1, CV_AA, 0);
-		//circle(image, center, 200, fishcolor, 1, CV_AA, 0);
+		circle(image, center, 30, fishcolor, 1, CV_AA, 0);
+		circle(image, center, 200, fishcolor, 1, CV_AA, 0);
 		arrowedLine(image, tail, head, fishcolor, 1, CV_AA, 0, 0.2);
 	}
 }
@@ -128,22 +129,23 @@ int follow(Individuals inds, int id, int fov){
 	double dirvector[2]; // direction vector (fish id) of lenth 1
 	dirvector[0] = cos(inds.dir[id] * PI / 180);
 	dirvector[1] = sin(inds.dir[id] * PI / 180);
-	double dist[inds.n]; // absolut distance between fish i and fish id // does not need to be an array
-	double angle[inds.n]; // angle between fish id direction vector and fish i pos vector
+	double dist; // absolut distance between fish i and fish id // does not need to be an array
+	double angle; // angle between fish id direction vector and fish i pos vector
 	for (int i = 0; i < inds.n; i++){
-		inds.coords[i][0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0
-		inds.coords[i][1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
-		dist[i] = sqrt(pow(inds.coords[i][0], 2) + pow(inds.coords[i][1], 2)); // calculate absolute distances of respective i to id
+		double coords[2];
+		coords[0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0
+		coords[1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
+		dist = sqrt(pow(coords[0], 2) + pow(coords[1], 2)); // calculate absolute distances of respective i to id
 		
 		if (i != id){
 			// dot product(direction vector of id, position vector of i)
-			angle[i] =  acos((dirvector[0] * inds.coords[i][0] + dirvector[1] * inds.coords[i][1]) / dist[i]) * 180 / PI; 
+			angle =  acos((dirvector[0] * coords[0] + dirvector[1] * coords[1]) / dist) * 180 / PI; 
 		}
 		else{
-			angle[i] = 180; // never see yourself!	
+			angle = 180; // never see yourself!	
 		}
 
-		if (angle[i] < (fov / 2) && dist[i] < 200){
+		if (angle < (fov / 2) && dist < 200){
 			c++;		
 		}
 
@@ -160,7 +162,7 @@ double social(Individuals inds, int id, int fov){
 	int c = follow(inds, id, fov); // counter for fish in visual radius
 	double repulsion; // repulsion value of other fish..
 	double coordsum[2] = {0, 0};
-	bool socialfactor = 2; // switch for avoidance behavior, 0 for no avoidance
+	int socialfactor = 2; // switch for avoidance behavior, 0 for no avoidance
 	double newdir = inds.dir[id]; // angle after avoidance behavior
 	double nearestvisdist = 200; // initializes distance of nearest seeable neighbour
 	int nearestvisid; // id of nearest seeable neighbor
@@ -168,14 +170,15 @@ double social(Individuals inds, int id, int fov){
 
 	// check distances for all other fish and determine social factor (0 = avoid, 1 = correct angle, 2 = reconnect with others)
 	for (int i = 0; i < inds.n; i++){
+		double coords[2]; // coords of comparison fish
 		repulsion = 0;
-		inds.coords[i][0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0
-		inds.coords[i][1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
-		dist = sqrt(pow(inds.coords[i][0], 2) + pow(inds.coords[i][1], 2)); // calculate absolute distances of respective i to id
+		coords[0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0
+		coords[1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
+		dist = sqrt(pow(coords[0], 2) + pow(coords[1], 2)); // calculate absolute distances of respective i to id
 
 		if (i != id){
 			// dot product(direction vector of id, position vector of i)
-			angle =  acos((dirvector[0] * inds.coords[i][0] + dirvector[1] * inds.coords[i][1]) / dist) * 180 / PI;
+			angle =  acos((dirvector[0] * coords[0] + dirvector[1] * coords[1]) / dist) * 180 / PI;
 			if (dist < nearestvisdist){
 				nearestvisdist = dist;
 				nearestvisid = i;			
@@ -197,8 +200,8 @@ double social(Individuals inds, int id, int fov){
 		//}
 		
 		if (i != id){
-			coordsum[0] = coordsum[0] + inds.coords[i][0] * repulsion;
-			coordsum[1] = coordsum[1] + inds.coords[i][1] * repulsion;
+			coordsum[0] = coordsum[0] + coords[0] * repulsion;
+			coordsum[1] = coordsum[1] + coords[1] * repulsion;
 			avoidsum = avoidsum + repulsion;		
 		}
 	}
@@ -235,61 +238,11 @@ double social(Individuals inds, int id, int fov){
 		}
 	}
 
-	if (socialfactor == 2){
-			cout << "attraction; ";
-			double neighbordistl[2];
-			neighbordistl[0] = sqrt(pow(inds.coords[nearestvisid][0], 2) + pow(inds.coords[nearestvisid][1], 2));
-			neighbordistl[1] = neighbordistl[0];
-			double neighbordistr[2];
-			neighbordistr[0] = sqrt(pow(inds.coords[nearestvisid][0], 2) + pow(inds.coords[nearestvisid][1], 2));
-			neighbordistr[1] = neighbordistl[0];
-			double newdirleft = newdir;
-			double newdirright = newdir;
-
-			bool turnleft = 0;
-			bool turnright = 0;
-			
-			while(turnleft == 0 && turnright == 0){
-				newdirleft = newdirleft - 10;	
-				leftcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirleft * PI / 180);
-				leftcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirleft * PI / 180);
-
-				newdirright = newdirright + 10;	
-				rightcoords[0] = (state(inds, id) * inds.dspeed + 1) * inds.speed * cos(newdirright * PI / 180);
-				rightcoords[1] = (state(inds, id) * inds.dspeed + 1) * inds.speed * sin(newdirright * PI / 180);
-
-				neighbordistl[1] = sqrt(pow(leftcoords[0] - inds.coords[nearestvisid][0], 2) + pow(leftcoords[1] - inds.coords[nearestvisid][1], 2));
-				neighbordistr[1] = sqrt(pow(rightcoords[0] - inds.coords[nearestvisid][0], 2) + pow(rightcoords[1] - inds.coords[nearestvisid][1], 2));
-				
-				if (neighbordistl[1] < neighbordistl[0]){
-					neighbordistl[0] = neighbordistl[1];
-				}
-				else{
-					turnleft = 1;					
-				}
-				
-				if (neighbordistr[1] < neighbordistr[0]){
-					neighbordistr[0] = neighbordistr[1];
-				}
-				else{
-					turnright = 1;					
-				}
-			}
-
-			if (turnleft == 1 && turnright == 1){
-				if (rand() % 2 == 0){
-					newdir = newdirleft;
-				}
-				else{
-					newdir = newdirright;					
-				}
-			}
-			else if (turnleft == 1 && turnright == 0){
-				newdir = newdirleft;
-			}
-			else{
-				newdir = newdirright;		
-			}
+	if (socialfactor == 2 && c > 0){
+		cout << "I am: " << id << "; nearest vis id: " << nearestvisid << "\n";
+		cout << "nearest vis id coords: " << inds.coords[nearestvisid][0] << ", " << inds.coords[nearestvisid][1] << "\n";
+		newdir = newdir + getangle(inds, id, inds.coords[nearestvisid]);
+		cout << "nearest vis id coords: " << inds.coords[nearestvisid][0] << ", " << inds.coords[nearestvisid][1] << "\n";
 	}
 	return newdir;	
 }
@@ -353,11 +306,40 @@ double collision(Individuals inds, int id, double newdir){
 	return newdir;
 }
 
-void correctangle(double& dir){
+double correctangle(double dir){
 	if (dir < 0){
 		dir = dir + 360;	
 	}
-	else if (dir > 360){
+	else if (dir >= 360){
 		dir = dir - 360;
 	}
+	return dir;
+}
+
+double getangle(Individuals inds, int id, double point[2]){
+	point[0] = point[0] - inds.coords[id][0]; // move point in respect to setting fish id to 0,0
+	point[1] = point[1] - inds.coords[id][1];
+	double angle = acos(point[0] / sqrt(pow(point[0], 2) + pow(point[1], 2))) * 180 / PI; // arccos of dot product between id direction and point position
+
+	if (point[1] > 0){
+		angle = 360 - angle; // correct angle from 0 =< angle < 180 to 0 =< angle < 360 based on y coordinates
+	}
+	else if (point[1] == 0){ // correct 0 angle and 0,0 position
+		if (point[0] >= 0){
+			angle = 0;		
+		}
+		else{
+			angle = 180;		
+		}
+	}
+	
+	angle = angle - inds.dir[id]; // angle difference between id direction and point position, can be negative
+	double newangle = correctangle(angle); // set angle difference between 0 < x =< 360
+
+
+	if (newangle > 180){
+		newangle = newangle - 360; // left is negative, right is positive; angles between -180 < angle =< 180
+	}
+
+	return newangle;
 }
