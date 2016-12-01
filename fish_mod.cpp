@@ -15,12 +15,17 @@
 using namespace std;
 using namespace cv;
 
-#define w 500
+#define w 1000
 #define h 500
-#define num 10
+#define num 150
 
-const int sp_max = 30;
+const int sp_max = 50;
 int sp;
+const int dsp_max = 30;
+int dsp;
+const int nf_max = 200;
+int nf;
+
 
 class individuals{
 
@@ -41,12 +46,14 @@ public:
 };
 
 int follow(individuals inds,int id, int fov); // fov: field of view as angle
+int on_trackbar_nfollow(int,void*);
 
 void move(individuals& inds);
 void initialize(individuals& inds,int n, int dim, double speed, double dspeed, int nfollow);
 void drawfish(individuals inds, Mat fish_image);
-void on_trackbar( int, void* );
 
+double on_trackbar_dspeed(int,void*);
+double on_trackbar_speed(int,void*);
 double correctangle(double dir);
 double social(individuals inds,int id,int fov);
 double collision(individuals inds, int id, double newdir);
@@ -58,41 +65,61 @@ int main(){
 
   srand(time(0));
 
-  double speed = 1;
-
   // Creating window for imaging
   char fish_window[] = "Fish";
   Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
   individuals fish;
-  initialize(fish,num,2,3,4,1000); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
+  fish.speed = 1;
+  fish.dspeed = 1;
+  fish.nfollow = 0;
+  fish.dim = 2;
+
+  initialize(fish,num,fish.dim,fish.speed,fish.dspeed,fish.nfollow); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
   for(int z = 0; z < 1000; z++){
-  Mat fish_image = Mat::zeros(h,w,CV_8UC3);
+      Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
-  move(fish);
-  drawfish(fish,fish_image);
-  imshow(fish_window,fish_image);
+      move(fish);
+      drawfish(fish,fish_image);
+      imshow(fish_window,fish_image);
 
+      char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      sprintf(speed_trackbar,"%g",fish.speed);
+      createTrackbar("Speed","Fish",&sp,sp_max);
+      fish.speed = on_trackbar_speed(fish.speed,0);
+      // cout << fish.dspeed << "\n";
 
-  char trackbar[10];
-  sprintf(trackbar,"%g",speed);
-  createTrackbar("Speed","Fish",&sp,sp_max);
+      char dspeed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      sprintf(dspeed_trackbar,"%g",fish.dspeed);
+      createTrackbar("DSpeed","Fish",&dsp,dsp_max);
+      fish.dspeed = on_trackbar_dspeed(fish.dspeed,0);
 
-  waitKey(30);
+      char nfollow_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      sprintf(nfollow_trackbar,"%i",fish.nfollow);
+      createTrackbar("N-Follow","Fish",&nf,nf_max);
+      fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
+      // cout << "speed: "<< fish.speed << " dspeed: "<< fish.dspeed << " N-Follow: "<< fish.nfollow << "\n";
+
+      waitKey(30);
 }
   return(0);
 }
 
-// void on_trackbar( int, void* )
-// {
-//  alpha = (double) speed/30 ;
-//  beta = ( 1.0 - alpha );
-//
-//  addWeighted( src1, alpha, src2, beta, 0.0, dst);
-//
-//  imshow( "Linear Blend", dst );
-// }
+int on_trackbar_nfollow(int,void*)
+{
+return nf;
+}
+
+double on_trackbar_dspeed(int,void*)
+{
+return dsp;
+}
+
+double on_trackbar_speed(int,void*)
+{
+return sp;
+}
 
 void move(individuals& inds){
   for(int id = 0; id < inds.n;id++){
