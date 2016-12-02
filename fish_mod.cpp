@@ -15,17 +15,16 @@
 using namespace std;
 using namespace cv;
 
-#define w 1000
-#define h 500
-#define num 150
+#define w 1400
+#define h 700
+#define num 100
 
 const int sp_max = 50;
 int sp;
-const int dsp_max = 30;
+const int dsp_max = 15;
 int dsp;
-const int nf_max = 200;
+const int nf_max = num;
 int nf;
-
 
 class individuals{
 
@@ -47,6 +46,7 @@ public:
 
 int follow(individuals inds,int id, int fov); // fov: field of view as angle
 int on_trackbar_nfollow(int,void*);
+int lag(bool state, int lag);
 
 void move(individuals& inds);
 void initialize(individuals& inds,int n, int dim, double speed, double dspeed, int nfollow);
@@ -62,7 +62,8 @@ double getangle(individuals inds, int id, double* point);
 bool state(individuals inds, int id);
 
 int main(){
-
+  // cout << "Created using: OpenCV version 2.4.13" << endl;
+  // cout << "Currently using: " << "OpenCV version : " << CV_VERSION << endl;
   srand(time(0));
 
   // Creating window for imaging
@@ -77,7 +78,7 @@ int main(){
 
   initialize(fish,num,fish.dim,fish.speed,fish.dspeed,fish.nfollow); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
-  for(int z = 0; z < 1000; z++){
+  for(int z = 0; z < 10000; z++){
       Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
       move(fish);
@@ -88,17 +89,16 @@ int main(){
       sprintf(speed_trackbar,"%g",fish.speed);
       createTrackbar("Speed","Fish",&sp,sp_max);
       fish.speed = on_trackbar_speed(fish.speed,0);
-      // cout << fish.dspeed << "\n";
-
-      char dspeed_trackbar[10];  // create trackbar in "Fish" window for changing speed
-      sprintf(dspeed_trackbar,"%g",fish.dspeed);
-      createTrackbar("DSpeed","Fish",&dsp,dsp_max);
-      fish.dspeed = on_trackbar_dspeed(fish.dspeed,0);
-
-      char nfollow_trackbar[10];  // create trackbar in "Fish" window for changing speed
-      sprintf(nfollow_trackbar,"%i",fish.nfollow);
-      createTrackbar("N-Follow","Fish",&nf,nf_max);
-      fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
+      //
+      // char dspeed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      // sprintf(dspeed_trackbar,"%g",fish.dspeed);
+      // createTrackbar("DSpeed","Fish",&dsp,dsp_max);
+      // fish.dspeed = on_trackbar_dspeed(fish.dspeed,0);
+      //
+      // char nfollow_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      // sprintf(nfollow_trackbar,"%i",fish.nfollow);
+      // createTrackbar("N-Follow","Fish",&nf,nf_max);
+      // fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
       // cout << "speed: "<< fish.speed << " dspeed: "<< fish.dspeed << " N-Follow: "<< fish.nfollow << "\n";
 
       waitKey(30);
@@ -106,15 +106,15 @@ int main(){
   return(0);
 }
 
-int on_trackbar_nfollow(int,void*)
-{
-return nf;
-}
-
-double on_trackbar_dspeed(int,void*)
-{
-return dsp;
-}
+// int on_trackbar_nfollow(int,void*)
+// {
+// return nf;
+// }
+//
+// double on_trackbar_dspeed(int,void*)
+// {
+// return dsp;
+// }
 
 double on_trackbar_speed(int,void*)
 {
@@ -132,14 +132,10 @@ void move(individuals& inds){
       socialdir = socialdir + rand()%90+315;
       // socialdir = socialdir + rand()%21-10;
       socialdir = correctangle(socialdir);
-
-      if(inds.lag[id] == 0){  // individual lag phase
-        inds.lag[id] = rand()%10;
-      }
-      else{
-      inds.lag[id] = inds.lag[id]-1;
-      }
     }
+
+    socialdir = socialdir + rand()%21-10;
+    inds.lag[id] = lag(inds.state[id],inds.lag[id]);
 
     double coldir = collision(inds,id,socialdir);
 
@@ -163,13 +159,12 @@ void initialize(individuals& inds, int n ,int dim, double speed, double dspeed, 
     inds.colors[i][0] = 80 + rand()%155;
     inds.colors[i][1] = 80 + rand()%155;
     inds.colors[i][2] = 80 + rand()%155;
-    inds.dir[i] = rand()%361;
-    // inds.dir[i] = rand()%361; // all individuals facing x-axis
+    inds.dir[i] = rand()%361; // all individuals facing x-axis
     // inds.dir[i] = rand() % 20 + 350; // field of vision
 
     for(int u = 0; u < inds.dim; u++){
       if(u == 0){
-        inds.coords[i][u] = w/2 + rand()%201 - 100;
+        inds.coords[i][u] = w/8 + rand()%201 - 100;
       }
       else{
         inds.coords[i][u] = h/2 + rand()%201 - 100;
@@ -189,7 +184,7 @@ void drawfish(individuals inds, Mat fish_image){
     Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] - 10 * sin(inds.dir[i] * M_PI / 180));
     Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] + 10 * sin(inds.dir[i] * M_PI / 180));
 
-    circle(fish_image,center,1,fishcol,1,CV_AA,0);            // visualize center
+    // circle(fish_image,center,15,fishcol,1,CV_AA,0);            // visualize center
     // circle(fish_image,center,100,fishcol,1,CV_AA,0);           // visualize comfort zone
     // circle(fish_image,center,200,fishcol,1,CV_AA,0);           // visualize visual distance
     // char angle[10];
@@ -241,6 +236,18 @@ bool state(individuals inds, int id){
     state = 1;
   }
   return state;
+}
+
+int lag(bool state, int lag){
+  if(state == 0){
+    if(lag == 0){  // individual lag phase
+      lag = rand()%10;
+    }
+    else{
+      lag = lag-1;
+    }
+  }
+  return lag;
 }
 
 double collision(individuals inds, int id, double newdir){
@@ -302,6 +309,7 @@ double social(individuals inds, int id, int fov){
   double newdir = inds.dir[id]; // angle after avoidance behavior
 	double nearestvisdist = 200; // initializes distance of nearest seeable neighbour
   double avoidsum = 0; // sum of all weighted repulsion values for turning angle
+  double avoidir; // direciton in whicht to avoid nearestvisid
 
   int c = follow(inds, id, fov); // counter for fish in visual radius
   int nearestvisid; // id of nearest seeable neighbor
@@ -334,27 +342,31 @@ double social(individuals inds, int id, int fov){
 			repulsion = 1 / (0.01 * pow(dist, 2) + 1); // f(x) = 1 / (0.001 * x^2 + 1), also see google
 		}
 
-		if (angle < (fov / 2) && dist < 30){
+		if (angle < (fov / 2) && dist < 25){
 			socialfactor = 0;
 		}
 		else if (angle < (fov / 2) && dist < 100){
 			socialfactor = 1;
 		}
-
-		if (i != id){
-			coordsum[0] = coordsum[0] + coords[0] * repulsion;
-			coordsum[1] = coordsum[1] + coords[1] * repulsion;
-			avoidsum = avoidsum + repulsion;
-		}
 	}
 
 	if (socialfactor == 0){
-		if (c != 0){
-			coordsum[0] = coordsum[0]/c;
-			coordsum[1] = coordsum[1]/c;
-			avoidsum = avoidsum/c;
-		}
     // newdir = newdir - getangle(inds,id,coordsum) * avoidsum;
+    if(getangle(inds,id,inds.coords[nearestvisid]) < 0){
+      avoidir = getangle(inds,id,inds.coords[nearestvisid]) + 180;
+    }
+    else if(getangle(inds,id,inds.coords[nearestvisid]) == 0){
+      if(rand()%2 == 0){
+        avoidir = getangle(inds,id,inds.coords[nearestvisid]) + 180;
+      }
+      else{
+        avoidir = getangle(inds,id,inds.coords[nearestvisid]) - 180;
+      }
+    }
+    else{
+      avoidir = getangle(inds,id,inds.coords[nearestvisid]) - 180;
+    }
+    newdir = newdir + (1 / ( 0.01 * pow((nearestvisdist),2) + 4 ))* avoidir;
 	}
   else if(socialfactor == 1){
     double dir[2];
@@ -364,7 +376,7 @@ double social(individuals inds, int id, int fov){
     dir[0] = dir[0] + inds.coords[id][0];
     dir[1] = dir[1] + inds.coords[id][1];
 
-    newdir = newdir + (1 / ( 0.01 * pow((nearestvisdist-30),2) + 2 )) * getangle(inds,id,dir);
+    newdir = newdir + (1 / ( 0.01 * pow((nearestvisdist-25),2) + 2 )) * getangle(inds,id,dir);
 
   }
 
