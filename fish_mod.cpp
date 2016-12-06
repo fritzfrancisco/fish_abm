@@ -4,7 +4,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <vector>
-// #include <fstream>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -18,7 +17,7 @@ using namespace cv;
 
 #define w 1400
 #define h 700
-#define num 150
+#define num 80
 
 const int sp_max = 50;
 int sp;
@@ -29,21 +28,21 @@ int nf;
 
 class individuals{
 
-public:
+  public:
 
-  int n;
-  int dim;
-  int colors[num][3];     // individual color in RGB
-  int nfollow;
+    int n;
+    int dim;
+    int colors[num][3];     // individual color in RGB
+    int nfollow;
 
-  double dspeed;          // dspeed+1 = lag-phase / swim speed
-  double speed;           // movement speed
-  double lag [num];       // length n
-  double coords [num][2]; // height n * width dim
-  double dir [num];       // array of agles between 0 - 360 degrees for each individual
+    double dspeed;          // dspeed+1 = lag-phase / swim speed
+    double speed;           // movement speed
+    double lag [num];       // length n
+    double coords [num][2]; // height n * width dim
+    double dir [num];       // array of agles between 0 - 360 degrees for each individual
 
-  bool state [num];       // state of movement (directed/random)
-};
+    bool state [num];       // state of movement (directed/random)
+  };
 
 int in_zone(individuals inds,int id, int fov,double r); // fov: field of view as angle
 int on_trackbar_nfollow(int,void*);
@@ -103,7 +102,7 @@ int main(){
       createTrackbar("N-Follow","Fish",&nf,nf_max);
       fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
 
-      waitKey(30);
+      waitKey(60);
     }
     return(0);
   }
@@ -128,9 +127,10 @@ void move(individuals& inds){
 
     inds.state[id] = state(inds, id);
     double dir = correctangle(inds.dir[id]);
-    dir = dir + social(inds,id,330);
+    double turn = social(inds,id,330) + rand()%11-5; // maximum error of movement is +- 5°
 
-    // socialdir = socialdir + rand()%21-10;
+    dir = dir + turn;
+
     inds.lag[id] = lag(inds.state[id],inds.lag[id]);
     inds.coords[id][0] =  inds.coords[id][0] + (inds.state[id]*inds.dspeed+1) * inds.speed * cos(dir * M_PI / 180);
     inds.coords[id][1] = inds.coords[id][1] + (inds.state[id]*inds.dspeed+1) * inds.speed * sin(dir * M_PI/ 180);
@@ -157,7 +157,7 @@ void initialize(individuals& inds, int n ,int dim, double speed, double dspeed, 
 
     for(int u = 0; u < inds.dim; u++){
       if(u == 0){
-        inds.coords[i][u] = w/8 + rand()%201 - 100;
+        inds.coords[i][u] = w/2 + rand()%201 - 100;
       }
       else{
         inds.coords[i][u] = h/2 + rand()%201 - 100;
@@ -266,7 +266,7 @@ double social(individuals inds, int id, int fov){
   int nearestvisid; // id of nearest seeable neighbor
   int socialfactor = 2; // switch for behavior: 0 = avoidance, 1 = alignment, 2 = attraction
 
-  int n_avoid = in_zone(inds, id, fov, 20); // number of individals to avoid. [id,dist,angle,angle to neighbor]
+  int n_avoid = in_zone(inds, id, fov, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
   int n_align = in_zone(inds, id, fov, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
   int n_attract = in_zone(inds, id, fov, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
 
@@ -313,7 +313,7 @@ double social(individuals inds, int id, int fov){
         double angle =  acos((dirvector[0] * coords[0] + dirvector[1] * coords[1]) / dist) * 180 / M_PI;
 
       		if (angle < (fov / 2) && dist < 200){
-            if(dist < 20){
+            if(dist < 15){
               neighbors_avoid_id.at(c_avoid) = i; // first column: id of fish
               neighbors_avoid_dist.at(c_avoid) = dist;
               neighbors_avoid_angle.at(c_avoid) = getangle(inds,id,inds.coords[i]);
@@ -339,7 +339,7 @@ double social(individuals inds, int id, int fov){
               dir[1] = sin(inds.dir[i] * M_PI / 180) + inds.coords[id][1];
 
               neighbors_align_angle.at(c_align) = getangle(inds,id,dir); // angle to neighbor
-              neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / ( 0.01 * pow((dist-30),2) + 2 )); // turning angle, weighted according to distance of fish i
+              neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / ( 0.01 * pow((dist-15),2) + 2 )); // turning angle, weighted according to distance of fish i
               c_align++;
             }
             else{
