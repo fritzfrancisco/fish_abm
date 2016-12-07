@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <vector>
+// #include <fstream>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -25,6 +26,11 @@ const int dsp_max = 15;
 int dsp;
 const int nf_max = num;
 int nf;
+
+random_device rd;
+uniform_int_distribution<int>distrib_choice(0,1);
+uniform_int_distribution<int>distrib_error(-10,10);
+uniform_int_distribution<int>distrib_randomwalk(-45,45);
 
 class individuals{
 
@@ -80,7 +86,7 @@ int main(){
 
   initialize(fish,num,fish.dim,fish.speed,fish.dspeed,fish.nfollow); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
-  for(int z = 0; z < 10000; z++){
+  for(int z = 0; z < 100; z++){
       Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
       move(fish);
@@ -127,7 +133,7 @@ void move(individuals& inds){
 
     inds.state[id] = state(inds, id);
     double dir = correctangle(inds.dir[id]);
-    double turn = social(inds,id,330) + rand()%11-5; // maximum error of movement is +- 5°
+    double turn = social(inds,id,330) + distrib_error(rd); // maximum error of movement is +- 5°
 
     dir = dir + turn;
 
@@ -177,7 +183,7 @@ void drawfish(individuals inds, Mat fish_image){
     Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] - 10 * sin(inds.dir[i] * M_PI / 180));
     Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] + 10 * sin(inds.dir[i] * M_PI / 180));
 
-    // circle(fish_image,center,30,fishcol,1,CV_AA,0);            // visualize center
+    circle(fish_image,center,2,fishcol,1,CV_AA,0);            // visualize center
     // circle(fish_image,center,100,fishcol,1,CV_AA,0);           // visualize comfort zone
     // circle(fish_image,center,200,fishcol,1,CV_AA,0);           // visualize visual distance
     // char angle[10];
@@ -263,7 +269,6 @@ double social(individuals inds, int id, int fov){
   int c_align = 0;
 
   int c = in_zone(inds, id, fov, 200); // counter for fish in visual radius
-  int nearestvisid; // id of nearest seeable neighbor
   int socialfactor = 2; // switch for behavior: 0 = avoidance, 1 = alignment, 2 = attraction
 
   int n_avoid = in_zone(inds, id, fov, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
@@ -325,9 +330,9 @@ double social(individuals inds, int id, int fov){
                 neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) + 180;
               }
               else{
-                neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) + (rand()%2 - 0.5) * 360;
+                neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) + (distrib_choice(rd)-0.5) * 360;
               }
-              neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_turn.at(c_avoid) * (1 / ( 0.01 * pow((dist),2) + 4 )); // change in angle with algebraic sign (+,-)
+              neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_turn.at(c_avoid) * (1 / ( 0.1 * pow((dist),2) + 2 )); // change in angle with algebraic sign (+,-)
               c_avoid++;
             }
             else if(dist < 100){
@@ -339,14 +344,14 @@ double social(individuals inds, int id, int fov){
               dir[1] = sin(inds.dir[i] * M_PI / 180) + inds.coords[id][1];
 
               neighbors_align_angle.at(c_align) = getangle(inds,id,dir); // angle to neighbor
-              neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / ( 0.01 * pow((dist-15),2) + 2 )); // turning angle, weighted according to distance of fish i
+              neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / ( 0.004 * pow((dist-15),2) + 2 )); // turning angle, weighted according to distance of fish i
               c_align++;
             }
             else{
               neighbors_attract_id.at(c_attract) = i; // id of neighbor fish
               neighbors_attract_dist.at(c_attract) = dist; // distance between neighbor and focal fish
               neighbors_attract_angle.at(c_attract) = getangle(inds,id,inds.coords[i]);
-              neighbors_attract_turn.at(c_attract) = neighbors_attract_angle.at(c_attract) * (1 / ( 0.01 * pow(( dist-200),2) + 2 )); // turning angle, weighted according to distance fish i
+              neighbors_attract_turn.at(c_attract) = neighbors_attract_angle.at(c_attract) * (1 / ( 0.004 * pow(( dist-200),2) + 2 )); // turning angle, weighted according to distance fish i
               c_attract++;
               }
             }
@@ -371,7 +376,7 @@ double social(individuals inds, int id, int fov){
             turn = averageturn(neighbors_attract_turn);
           }
           else{
-            turn = rand()%91 - 45; // random walk if no social interactions present
+            turn = distrib_randomwalk(rd); // random walk if no social interactions present
           }
         }
       return turn;
@@ -413,6 +418,7 @@ double correctangle(double dir){
 }
 
 double getangle(individuals inds, int id, double* position){
+  // stream cout to file
 	double point[2];
   point[0] = position[0] - inds.coords[id][0]; // move point in respect to setting fish id to 0,0
 	point[1] = position[1] - inds.coords[id][1];
