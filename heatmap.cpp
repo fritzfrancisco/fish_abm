@@ -42,7 +42,7 @@ int main(){
     for(int y = 35 ;y < 436;y++){
         // double d = abs(y-405)/2;
         // s = 1 / ( 0.01 * pow((d-200),2) + 2);
-        heatmap_image_grey.at<Vec3b>(y,x) = Vec3b(30+(450*s),30+(450*s),30+(450*s));
+        heatmap_image_grey.at<Vec3b>(y,x) = Vec3b((510*s),(510*s),(510*s));
         s = s - (0.5/400);
     }
   }
@@ -97,7 +97,7 @@ int main(){
 
   imshow(heatmap_window,invert_out);
 
-  imwrite( "Social heat map.png", invert_out);
+  // imwrite( "Social heat map.png", invert_out);
 
   waitKey();
 
@@ -109,14 +109,14 @@ void paint(int x, int y,Mat image){
   double d = sqrt(pow((205-x),2)+pow((205-y),2));
   if(d < 15){
     s = 1 / ( 0.1 * pow((d),2) + 2 );
-    image.at<Vec3b>(y,x) = Vec3b(30+(450*s),30+(450*s),30+(450*s));
+    image.at<Vec3b>(y,x) = Vec3b((510*s),(510*s),(510*s));
   }
   else if(d >= 15 && d < 100){
     s = 1 / (0.004 * pow((d-15),2) + 2);
-    image.at<Vec3b>(y,x) = Vec3b(30+(450*s),30+(450*s),30+(450*s));
+    image.at<Vec3b>(y,x) = Vec3b((510*s),(510*s),(510*s));
   }
   else if(d >= 100 && d < 200){
     s = (1 / ( 0.004 * pow((d-200),2) + 2 ));
-    image.at<Vec3b>(y,x) = Vec3b(30+(450*s),30+(450*s),30+(450*s));
+    image.at<Vec3b>(y,x) = Vec3b((510*s),(510*s),(510*s));
   }
 }

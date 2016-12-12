@@ -16,11 +16,17 @@
 using namespace std;
 using namespace cv;
 
-#define w 1400
-#define h 700
-#define num 100
-#define rows 4
-#define cols 10
+#define latitude 14
+#define longitude 7
+#define resolution 5 // must be 100 > resolution > 1
+#define res_factor 20 // should be: res_factor * resolution = 100
+
+#define w (latitude * resolution * res_factor)
+#define h (longitude * resolution * res_factor)
+#define rows (longitude*resolution)
+#define cols (latitude*resolution)
+
+#define num 80
 
 const int sp_max = 50;
 int sp;
@@ -34,6 +40,7 @@ uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
 uniform_int_distribution<int>distrib_quality(0,10);
+uniform_int_distribution<int>distrib_seed(0,10);
 
 class individuals{
 
@@ -43,36 +50,36 @@ class individuals{
     int dim;
     int colors[num][3];     // individual color in RGB
     int nfollow;
+    int state [num];       // state of movement (directed/random)
 
     double dspeed;          // dspeed+1 = lag-phase / swim speed
-    double speed;           // movement speed
+    double speed[num];           // movement speed
     double lag [num];       // length n
     double coords [num][2]; // height n * width dim
     double dir [num];       // array of agles between 0 - 360 degrees for each individual
 
-    bool state [num];       // state of movement (directed/random)
   };
 
 int in_zone(individuals inds,int id, int fov,double r); // fov: field of view as angle
-int on_trackbar_nfollow(int,void*);
-int lag(bool state, int lag);
+// int on_trackbar_nfollow(int,void*);
+int lag(int state, int lag);
 int get_quality(individuals inds, int id, int quality[][cols]);
+int state(individuals inds, int id);
 
 void move(individuals& inds, int quality[][cols]);
 void initialize(individuals& inds,int n, int dim, double speed, double dspeed, int nfollow);
 void drawfish(individuals inds, Mat fish_image);
 void correct_coords(double* coords);
 void create_environment(Mat& environment,int quality[][cols]);
-
-double on_trackbar_dspeed(int,void*);
-double on_trackbar_speed(int,void*);
+void feed(individuals inds, int quality[][cols],Mat& environment);
+// double on_trackbar_dspeed(int,void*);
+// double on_trackbar_speed(int,void*);
 double correctangle(double dir);
 double social(individuals inds,int id,int fov);
 double collision(individuals inds, int id, double newdir);
 double getangle(double* focal_coords, double focal_dir, double* position);
 double averageturn(vector<double> vec);
 
-bool state(individuals inds, int id);
 
 int main(){
   // cout << "Created using: OpenCV version 2.4.13" << endl;
@@ -96,17 +103,18 @@ int main(){
   // imshow(env_window,environment);
 
   individuals fish;
-  fish.speed = 1;
-  fish.dspeed = 5;
-  fish.nfollow = 100;
-  fish.dim = 2;
-
-  initialize(fish,num,fish.dim,fish.speed,fish.dspeed,fish.nfollow); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
+  // required for trakcbar initiation
+  // fish.speed = 1;
+  // fish.dspeed = 5;
+  // fish.nfollow = 0;
+  // fish.dim = 2;
+  initialize(fish,num,2,5,0,num); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
   for(int z = 0; z < 10000; z++){
       // plot fish on black background
       fish_image = Mat::zeros(h,w,CV_8UC3);
 
+      feed(fish,quality,environment);
       move(fish,quality);
       drawfish(fish,fish_image);
       // cvtColor(fish_image,fish_mask,CV_BGR2GRAY);
@@ -115,45 +123,45 @@ int main(){
       addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
       imshow(fish_window,fishinenvironment);
 
-      char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
-      sprintf(speed_trackbar,"%g",fish.speed);
-      createTrackbar("Speed","Fish",&sp,sp_max);
-      fish.speed = on_trackbar_speed(fish.speed,0);
-
-      char dspeed_trackbar[10];  // create trackbar in "Fish" window for changing speed
-      sprintf(dspeed_trackbar,"%g",fish.dspeed);
-      createTrackbar("DSpeed","Fish",&dsp,dsp_max);
-      fish.dspeed = on_trackbar_dspeed(fish.dspeed,0);
-
-      char nfollow_trackbar[10];  // create trackbar in "Fish" window for changing speed
-      sprintf(nfollow_trackbar,"%i",fish.nfollow);
-      createTrackbar("N-Follow","Fish",&nf,nf_max);
-      fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
+      // char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      // sprintf(speed_trackbar,"%g",fish.speed);
+      // createTrackbar("Speed","Fish",&sp,sp_max);
+      // fish.speed = on_trackbar_speed(fish.speed,0);
+      //
+      // char dspeed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      // sprintf(dspeed_trackbar,"%g",fish.dspeed);
+      // createTrackbar("DSpeed","Fish",&dsp,dsp_max);
+      // fish.dspeed = on_trackbar_dspeed(fish.dspeed,0);
+      //
+      // char nfollow_trackbar[10];  // create trackbar in "Fish" window for changing speed
+      // sprintf(nfollow_trackbar,"%i",fish.nfollow);
+      // createTrackbar("N-Follow","Fish",&nf,nf_max);
+      // fish.nfollow = on_trackbar_nfollow(fish.nfollow,0);
 
       waitKey(60);
     }
     return(0);
   }
 
-int on_trackbar_nfollow(int,void*)
-  {
-  return nf;
-  }
-
-double on_trackbar_dspeed(int,void*)
-  {
-  return dsp;
-  }
-
-double on_trackbar_speed(int,void*)
-  {
-    return sp;
-  }
+// int on_trackbar_nfollow(int,void*)
+//   {
+//   return nf;
+//   }
+//
+// double on_trackbar_dspeed(int,void*)
+//   {
+//   return dsp;
+//   }
+//
+// double on_trackbar_speed(int,void*)
+//   {
+//     return sp;
+//   }
 
 void move(individuals& inds,int quality[][cols]){
-  for(int id = 0; id < inds.n;id++){
 
-    inds.state[id] = 1 - get_quality(inds,id,quality);//state(inds, id);
+  for(int id = 0; id < inds.n;id++){
+    // inds.state[id] = 10 - get_quality(inds,id,quality);//state(inds, id);
     // inds.state[id] = state(inds, id);
     double dir = correctangle(inds.dir[id]);
     double turn = social(inds,id,330) + distrib_error(rd); // maximum error of movement is +- 5°
@@ -161,9 +169,23 @@ void move(individuals& inds,int quality[][cols]){
     dir = dir + turn;
 
     inds.lag[id] = lag(inds.state[id],inds.lag[id]);
-    inds.coords[id][0] =  inds.coords[id][0] + (inds.state[id]*inds.dspeed+1) * inds.speed * cos(dir * M_PI / 180);
-    inds.coords[id][1] = inds.coords[id][1] + (inds.state[id]*inds.dspeed+1) * inds.speed * sin(dir * M_PI/ 180);
+
+    // make movement dependent on environment
+    int q = get_quality(inds,id,quality);
+    int stop_n_go = distrib_quality(rd);
+
+    if(stop_n_go < q){
+      inds.speed[id] = 0;
+    }
+    else{
+      inds.speed[id] = 5;
+    }
+    // inds.coords[id][0] =  inds.coords[id][0] + (inds.state[id]*inds.dspeed+1) * inds.speed[id] * cos(dir * M_PI / 180);
+    // inds.coords[id][1] = inds.coords[id][1] + (inds.state[id]*inds.dspeed+1) * inds.speed[id] * sin(dir * M_PI/ 180);
+    inds.coords[id][0] =  inds.coords[id][0] + inds.speed[id] * cos(dir * M_PI / 180);
+    inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * M_PI/ 180);
     correct_coords(inds.coords[id]);
+
     inds.dir[id] = dir;
   }
 }
@@ -171,13 +193,13 @@ void move(individuals& inds,int quality[][cols]){
 void initialize(individuals& inds, int n ,int dim, double speed, double dspeed, int nfollow){
   inds.n = n;
   inds.dim = dim;
-  inds.speed = speed;
   inds.dspeed = dspeed;
   inds.nfollow = nfollow;
 
   for(int i = 0; i < inds.n; i++){
 
     inds.lag[i] = 0;
+    inds.speed[i] = speed;
     inds.colors[i][0] = 80 + rand()%155;
     inds.colors[i][1] = 80 + rand()%155;
     inds.colors[i][2] = 80 + rand()%155;
@@ -207,8 +229,8 @@ void drawfish(individuals inds, Mat fish_image){
     Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * M_PI / 180),inds.coords[i][1] + 10 * sin(inds.dir[i] * M_PI / 180));
 
     circle(fish_image,center,2,fishcol,1,CV_AA,0);            // visualize center
-    // circle(fish_image,center,100,fishcol,1,CV_AA,0);           // visualize comfort zone
-    // circle(fish_image,center,200,fishcol,1,CV_AA,0);           // visualize visual distance
+    // circle(fish_image,center,100,fishcol,1,CV_AA,0);       // visualize comfort zone
+    // circle(fish_image,center,200,fishcol,1,CV_AA,0);       // visualize visual distance
     // char angle[10];
     // sprintf(angle,"%g",inds.dir[i]);
     // putText(fish_image,angle,center,1,1,fishcol,1,8);
@@ -261,15 +283,15 @@ int in_zone(individuals inds,int id,int fov,double r){
   return c;
 }
 
-bool state(individuals inds, int id){
-  bool state = 0;
+int state(individuals inds, int id){
+  int state = 0;
   if(in_zone(inds,id,180,200) >= inds.nfollow && inds.lag[id] == 0){
     state = 1;
   }
   return state;
 }
 
-int lag(bool state, int lag){
+int lag(int state, int lag){
   if(state == 0){
     if(lag == 0){  // individual lag phase
       lag = rand()%10;
@@ -504,16 +526,61 @@ void correct_coords(double* coords){
 }
 
 void create_environment(Mat& environment,int quality[][cols]){
-  for(int i =0;i<cols;i++){
-    for(int u=0;u<rows;u++){
-      quality[u][i] = distrib_quality(rd);
+  int seed = distrib_seed(rd);
+  for(int u=0;u<rows;u++){
+     for(int i =0;i<cols;i++){
+       quality[u][i] = 0;
+     }
+   }
+
+  if(seed > 0){
+  int seed_coords[seed][2];
+  uniform_int_distribution<int>distrib_rows(0,rows);
+  uniform_int_distribution<int>distrib_cols(0,cols);
+
+  for(int i = 0; i < seed;i++){
+    seed_coords[i][0] = distrib_rows(rd);
+    seed_coords[i][1] = distrib_cols(rd);
+    quality[seed_coords[i][0]][seed_coords[i][1]] = 10;
+      }
     }
-  }
+  int p = 0;
+  while(p == 0){
+    for(int u=0;u<rows;u++){
+        for(int i =0;i<cols;i++){
+          if(quality[u-1][i-1]  <= p||quality[u-1][i] <= p||quality[u-1][i+1] <= p ||quality[u][i-1] <= p||quality[u][i+1] <= p||quality[u+1][i-1] <= p||quality[u+1][i] <= p||quality[u+1][i+1] <= p){
+            quality[u][i] = distrib_quality(rd);
+          }
+        }
+      }
+      p++;
+    }
+
+  //
+  // for(int u=0;u<rows;u++){
+  //   for(int i =0;i<cols;i++){
+  //     if(i == 0 && u == 0){
+  //       quality[u][i] = distrib_quality(rd);
+  //     }
+  //     else if(i==0){
+  //       quality[u][i] = (quality[u-1][i] + quality[u-1][i+1] + distrib_quality(rd))/3;
+  //     }
+  //     else if(u==0){
+  //       quality[u][i] = (quality[u][i-1] + distrib_quality(rd))/2;
+  //     }
+  //     else if(i==(cols-1)){
+  //       quality[u][i] = (quality[u-1][i] + quality[u-1][i-1] + quality[u-1][i] + distrib_quality(rd))/4;
+  //     }
+  //     else{
+  //       quality[u][i] = (quality[u-1][i-1] + quality[u][i-1] + quality[u-1][i] + quality[u-1][i+1] + distrib_quality(rd))/5;
+  //     }
+  //   }
+  // }
   // Color squares according to quality
-  for(int i = 0;i < w;i++){
-    for(int u = 0; u < h;u++){
-      int q_color = quality[u/(h/rows)][i/(w/cols)];
-          environment.at<Vec3b>(u,i)= Vec3b(q_color*(255),q_color*(255),q_color*(255));
+  for(int x = 0;x < w;x++){
+    for(int y = 0; y < h;y++){
+      int q_color = quality[y/(h/rows)][x/(w/cols)];
+          environment.at<Vec3b>(y,x)= Vec3b(q_color*(255/10),q_color*(255/10),q_color*(255/10));
     }
   }
 }
@@ -521,6 +588,31 @@ void create_environment(Mat& environment,int quality[][cols]){
 int get_quality(individuals inds, int id, int quality[][cols]){
   int x = inds.coords[id][0];
   int y = inds.coords[id][1];
-  int q = quality[y /(h/rows)][x/(w/cols)];
+  int q = quality[y/(h/rows)][x/(w/cols)];
   return q;
+}
+
+void feed(individuals inds, int quality[][cols],Mat& environment){
+  for(int id = 0; id < inds.n;id++){
+    int x = inds.coords[id][0];
+    int y = inds.coords[id][1];
+
+    int q =  quality[y/(h/rows)][x/(w/cols)];
+    if(q>0){
+      quality[y /(h/rows)][x/(w/cols)] = q - 1;
+      q = q -1;
+    }
+
+    // determining box in quality matrix
+    int y_min = y/(h/rows);
+    y_min = y_min * (h/rows);
+    int y_max = y_min + (h/rows);
+
+    int x_min = x/(w/cols);
+    x_min = x_min * (w/cols);
+    int x_max = x_min + (w/cols);
+
+    // draw environment boxes as filled rectangles
+    rectangle(environment,Point(x_min,y_min),Point(x_max-1,y_max-1),Scalar(q*(255/10),q*(255/10),q*(255/10)),-1,8,0);
+  }
 }
