@@ -17,15 +17,15 @@
 #define PI 3.14159265
 #define num 60
 
-#define rows 4
-#define cols 8
+#define rows 300
+#define cols 600
 
-const int sp_max = 30;
-int sp = 2;
-const int dsp_max = 20;
-int dsp = 6;
-const int nf_max = num;
-int nf;
+// const int sp_max = 30;
+// int sp = 2;
+// const int dsp_max = 20;
+// int dsp = 6;
+// const int nf_max = num;
+// int nf;
 
 using namespace std;
 using namespace cv;
@@ -34,36 +34,37 @@ random_device rd;
 uniform_int_distribution<int> distrib_choice(0, 1);
 uniform_int_distribution<int> distrib_error(-10, 10);
 uniform_int_distribution<int> distrib_rwalk(-45, 45);
+uniform_int_distribution<int> distrib_quality(0, 10);
 
 class Individuals {
 	public:
 		double coords[num][2]; // height n and width dim
 		double dir[num]; // fish direction between 0 and 360°
 		int lag[num]; // with length n
-		bool state[num]; // 0 for random, 1 for directed
+		int state[num]; // 0 for random, 1 for directed
 		int color[num][3];
 		int n;
 		int dim;
-		double speed; // movement speed
+		double speed[num]; // movement speed
 		double dspeed; //dspeed + 1 = swimming speed / feeding speed
 		int nfollow;
 };
 
 void move(Individuals& inds, int quality[][cols]);
-void initialize(Individuals& inds, int n, int dim, double speed, double dspeed, int nfollow);
+void initialize(Individuals& inds, int n, int dim); //, double speed, double dspeed, int nfollow
 void drawfish(Individuals inds, Mat image);
 int in_zone(Individuals inds, int id, int fov, double r); // fov: field of view
-bool state(Individuals inds, int id);
+int state(Individuals inds, int id);
 double collision(Individuals inds, int id, double newdir);
 double correct_angle(double dir);
 double get_angle(double* focal_coords, double focal_dir, double* pos);
 double social(Individuals inds, int id, int fov);
 double distance(double* coordsa, double* coordsb);
-int lag(bool state, int lag);
+int lag(int state, int lag);
 
-double on_trackbar_dspeed(int, void*);
-double on_trackbar_speed(int, void*);
-int on_trackbar_nfollow(int, void*);
+// double on_trackbar_dspeed(int, void*);
+// double on_trackbar_speed(int, void*);
+// int on_trackbar_nfollow(int, void*);
 
 double average_turn(vector<double> vec);
 void correct_coords(double* coords);
@@ -87,12 +88,12 @@ int main() {
 	Mat fish_environment;
 
 	Individuals fish;
-	fish.speed = 1;
-	fish.dspeed = 1;
-	fish.nfollow = num;
+	// fish.speed = 1;
+	// fish.dspeed = 1;
+	// fish.nfollow = num;
 
 	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow
-	initialize(fish, num, 2, fish.speed, fish.dspeed, fish.nfollow);
+	initialize(fish, num, 2); //, fish.speed, fish.dspeed, fish.nfollow
 
 	for (int z = 0; z < 2000; z++) {
 		fish_image = Mat::zeros(h, w, CV_8UC3);
@@ -111,10 +112,10 @@ int main() {
 
 		move(fish, quality);
 
-		char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
-	    sprintf(speed_trackbar,"%g",fish.speed);
-	    createTrackbar("Speed","Fish",&sp,sp_max);
-	    fish.speed = on_trackbar_speed(fish.speed,0);
+		// char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
+	    // sprintf(speed_trackbar,"%g",fish.speed);
+	    // createTrackbar("Speed","Fish",&sp,sp_max);
+	    // fish.speed = on_trackbar_speed(fish.speed,0);
 
 	}
 	return(0);
@@ -124,36 +125,35 @@ void move(Individuals& inds, int quality[][cols]) {
 	for (int id = 0; id < inds.n; id++) {
 		double dir = correct_angle(inds.dir[id]);
 
-		inds.state[id] = 1 - get_quality(inds, id, quality); //state(inds, id);
+		inds.state[id] = 11 - get_quality(inds, id, quality); //state(inds, id);
+		inds.speed[id] = in_zone(inds, id, 180, 200) / 4;
 		double small_error = distrib_error(rd);
-
-		// f_small_error << small_error << ",\n";
 
 		double turn = social(inds, id, 330) + small_error;
 
 		dir = dir + turn;
 		inds.lag[id] = lag(inds.state[id], inds.lag[id]);
 
-		inds.coords[id][0] = inds.coords[id][0] + (inds.state[id] * inds.dspeed + 1) * inds.speed * cos(dir * PI / 180);
-		inds.coords[id][1] = inds.coords[id][1] + (inds.state[id] * inds.dspeed + 1) * inds.speed * sin(dir * PI / 180);
+		inds.coords[id][0] = inds.coords[id][0] + 0.5 * inds.state[id] * sqrt(pow(inds.speed[id] - 5, 2)) * cos(dir * PI / 180);
+		inds.coords[id][1] = inds.coords[id][1] + 0.5 * inds.state[id] * sqrt(pow(inds.speed[id] - 5, 2)) * sin(dir * PI / 180);
 		correct_coords(inds.coords[id]);
 
 		inds.dir[id] = dir;
 	}
 }
 
-void initialize(Individuals& inds, int n, int dim, double speed, double dspeed, int nfollow) {
+void initialize(Individuals& inds, int n, int dim) { //, double speed, double dspeed, int nfollow
 	inds.n = n;
 	inds.dim = dim;
-	inds.speed = speed;
-	inds.dspeed = dspeed;
-	inds.nfollow = nfollow;
+	inds.dspeed = 4;
+	inds.nfollow = 1000;
 	for (int i = 0; i < inds.n; i++) {
 		inds.lag[i] = 0;
 		inds.color[i][0] = 120 + rand() % 120;
 		inds.color[i][1] = 120 + rand() % 120;
 		inds.color[i][2] = 120 + rand() % 120;
 		inds.dir[i] = rand() % 360; // direction
+		inds.speed[i] = 5;
 		for (int u = 0; u < inds.dim; u++) {
 			if (u == 0) {
 				inds.coords[i][u] = w / 2 + rand() % 201 - 100; // x coord
@@ -377,8 +377,8 @@ double average_turn(vector<double> vec) {
 	return angle;
 }
 
-bool state(Individuals inds, int id) {
-	bool state = 0;
+int state(Individuals inds, int id) {
+	int state = 0;
 	if (in_zone(inds, id, 180, 200) >= inds.nfollow && inds.lag[id] == 0) {
 		state = 1; // swimming state
 	}
@@ -444,19 +444,19 @@ double distance(double* coordsa, double* coordsb) {
 	return distance;
 }
 
-int on_trackbar_nfollow (int, void*) {
-	return nf;
-}
+// int on_trackbar_nfollow (int, void*) {
+// 	return nf;
+// }
+//
+// double on_trackbar_dspeed (int, void*) {
+// 	return dsp;
+// }
+//
+// double on_trackbar_speed (int, void*) {
+// 	return sp;
+// }
 
-double on_trackbar_dspeed (int, void*) {
-	return dsp;
-}
-
-double on_trackbar_speed (int, void*) {
-	return sp;
-}
-
-int lag(bool state, int lag) {
+int lag(int state, int lag) {
 	if (state == 0) {
 		if (lag == 0) {
 			lag = 40;
@@ -487,14 +487,14 @@ void correct_coords(double* coords) {
 void create_environment(Mat& environment, int quality[][cols]) {
 	for (int i = 0; i < cols; i++) {
 		for (int u = 0; u < rows; u++) {
-			quality[u][i] = distrib_choice(rd);
+			quality[u][i] = distrib_quality(rd);
 		}
 	}
 
 	for (int i = 0; i < h; i++) {
 		for (int u = 0; u < w; u++) {
 			int q = quality[i / (h / rows)][u / (w / cols)];
-			environment.at<Vec3b>(i, u) = Vec3b(q * 255, q * 255, q * 255);
+			environment.at<Vec3b>(i, u) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
 		}
 	}
 }
