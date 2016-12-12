@@ -18,7 +18,9 @@ using namespace cv;
 
 #define w 1400
 #define h 700
-#define num 80
+#define num 100
+#define rows 4
+#define cols 10
 
 const int sp_max = 50;
 int sp;
@@ -31,6 +33,7 @@ random_device rd;
 uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
+uniform_int_distribution<int>distrib_quality(0,10);
 
 class individuals{
 
@@ -53,18 +56,20 @@ class individuals{
 int in_zone(individuals inds,int id, int fov,double r); // fov: field of view as angle
 int on_trackbar_nfollow(int,void*);
 int lag(bool state, int lag);
+int get_quality(individuals inds, int id, int quality[][cols]);
 
-void move(individuals& inds);
+void move(individuals& inds, int quality[][cols]);
 void initialize(individuals& inds,int n, int dim, double speed, double dspeed, int nfollow);
 void drawfish(individuals inds, Mat fish_image);
 void correct_coords(double* coords);
+void create_environment(Mat& environment,int quality[][cols]);
 
 double on_trackbar_dspeed(int,void*);
 double on_trackbar_speed(int,void*);
 double correctangle(double dir);
 double social(individuals inds,int id,int fov);
 double collision(individuals inds, int id, double newdir);
-double getangle(individuals inds, int id, double* position);
+double getangle(double* focal_coords, double focal_dir, double* position);
 double averageturn(vector<double> vec);
 
 bool state(individuals inds, int id);
@@ -78,6 +83,18 @@ int main(){
   char fish_window[] = "Fish";
   Mat fish_image = Mat::zeros(h,w,CV_8UC3);
 
+  // Create "food" environment
+  char env_window[] = "Environment";
+  Mat environment = Mat::zeros(h,w,CV_8UC3);
+  Mat fishinenvironment = Mat::zeros(h,w,CV_8UC3);
+  // Creating mask
+  // Mat fish_mask = Mat::zeros(h,w,CV_8UC3);
+  // Establish mixed pattern of environment with quality[h]x[w] squares
+  int quality[rows][cols];
+  create_environment(environment,quality);
+
+  // imshow(env_window,environment);
+
   individuals fish;
   fish.speed = 1;
   fish.dspeed = 5;
@@ -86,12 +103,17 @@ int main(){
 
   initialize(fish,num,fish.dim,fish.speed,fish.dspeed,fish.nfollow); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
-  for(int z = 0; z < 100; z++){
-      Mat fish_image = Mat::zeros(h,w,CV_8UC3);
+  for(int z = 0; z < 10000; z++){
+      // plot fish on black background
+      fish_image = Mat::zeros(h,w,CV_8UC3);
 
-      move(fish);
+      move(fish,quality);
       drawfish(fish,fish_image);
-      imshow(fish_window,fish_image);
+      // cvtColor(fish_image,fish_mask,CV_BGR2GRAY);
+      // threshold(fish_image,fish_mask,20,255,THRESH_BINARY);
+      // subtract(environment,fish_mask,fishinenvironment);
+      addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
+      imshow(fish_window,fishinenvironment);
 
       char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
       sprintf(speed_trackbar,"%g",fish.speed);
@@ -128,10 +150,11 @@ double on_trackbar_speed(int,void*)
     return sp;
   }
 
-void move(individuals& inds){
+void move(individuals& inds,int quality[][cols]){
   for(int id = 0; id < inds.n;id++){
 
-    inds.state[id] = state(inds, id);
+    inds.state[id] = 1 - get_quality(inds,id,quality);//state(inds, id);
+    // inds.state[id] = state(inds, id);
     double dir = correctangle(inds.dir[id]);
     double turn = social(inds,id,330) + distrib_error(rd); // maximum error of movement is +- 5°
 
@@ -320,8 +343,8 @@ double social(individuals inds, int id, int fov){
       		if (angle < (fov / 2) && dist < 200){
             if(dist < 15){
               neighbors_avoid_id.at(c_avoid) = i; // first column: id of fish
-              neighbors_avoid_dist.at(c_avoid) = dist;
-              neighbors_avoid_angle.at(c_avoid) = getangle(inds,id,inds.coords[i]);
+              neighbors_avoid_dist.at(c_avoid) = dist; // distance between focal fish and neighbor
+              neighbors_avoid_angle.at(c_avoid) = getangle(inds.coords[id],inds.dir[id],inds.coords[i]); // angle to neighbor
 
               if(neighbors_avoid_angle.at(c_avoid) > 0){
                 neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) - 180;
@@ -343,14 +366,14 @@ double social(individuals inds, int id, int fov){
               dir[0] = cos(inds.dir[i] * M_PI / 180) + inds.coords[id][0]; // unit vector of neighbor i, starting at focal fish
               dir[1] = sin(inds.dir[i] * M_PI / 180) + inds.coords[id][1];
 
-              neighbors_align_angle.at(c_align) = getangle(inds,id,dir); // angle to neighbor
+              neighbors_align_angle.at(c_align) = getangle(inds.coords[id],inds.dir[id],dir); // angle to neighbor
               neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / ( 0.004 * pow((dist-15),2) + 2 )); // turning angle, weighted according to distance of fish i
               c_align++;
             }
             else{
               neighbors_attract_id.at(c_attract) = i; // id of neighbor fish
               neighbors_attract_dist.at(c_attract) = dist; // distance between neighbor and focal fish
-              neighbors_attract_angle.at(c_attract) = getangle(inds,id,inds.coords[i]);
+              neighbors_attract_angle.at(c_attract) = getangle(inds.coords[id],inds.dir[id],inds.coords[i]);
               neighbors_attract_turn.at(c_attract) = neighbors_attract_angle.at(c_attract) * (1 / ( 0.004 * pow(( dist-200),2) + 2 )); // turning angle, weighted according to distance fish i
               c_attract++;
               }
@@ -394,7 +417,7 @@ double averageturn(vector<double> vec){
   double angle = acos(x / sqrt(pow(x, 2) + pow(y, 2))) * 180 / M_PI; // angle to average turnpoint from x-axis == 0 degrees (0 - 180°)
 
   if (y < 0){
-		angle = 360 - angle;     // correct angle from 0 =< angle < 180 to 0 =< angle < 360 based on y coordinates
+		angle = 0 - angle;     // correct angle from 0 =< angle < 180 to 0 =< angle < 360 based on y coordinates
 	}
 	else if (y == 0){   // correct 0 angle and 0,0 position
 		if (x >= 0){ // reference point in front of focal point.don't change angle
@@ -417,11 +440,26 @@ double correctangle(double dir){
 	return dir;
 }
 
-double getangle(individuals inds, int id, double* position){
+double getangle(double* focal_coords, double focal_dir, double* position){
   // stream cout to file
 	double point[2];
-  point[0] = position[0] - inds.coords[id][0]; // move point in respect to setting fish id to 0,0
-	point[1] = position[1] - inds.coords[id][1];
+  point[0] = position[0] - focal_coords[0]; // move point in respect to setting fish id to 0,0
+	point[1] = position[1] - focal_coords[1];
+
+  if(point[0] > w/2){
+    point[0] = point[0] - w;
+  }
+  else if(point[0] < -w/2){
+    point[0] = point[0] + w;
+  }
+
+  if(point[1] > h/2){
+    point[1] = point[1] - h;
+  }
+  else if(point[1] < -h/2){
+    point[1] = point[1] + h;
+  }
+
 	double angle = acos(point[0] / sqrt(pow(point[0], 2) + pow(point[1], 2))) * 180 / M_PI; // arccos of dot product between id direction and point position
 
 	if (point[1] < 0){
@@ -436,12 +474,15 @@ double getangle(individuals inds, int id, double* position){
 		}
 	}
 
-	angle = angle - inds.dir[id];          // angle difference between id direction and point position, can be negative
+	angle = angle - focal_dir; // angle difference between id direction and point position, can be negative
 	double newangle = correctangle(angle); // set angle difference between 0 < x =< 360
 
 	if (newangle > 180){
 		newangle = newangle - 360; // left is negative, right is positive; angles between -180 < angle =< 180
 	}
+  else if(newangle == 180){
+    newangle = (distrib_choice(rd) - 0.5)*360; // random choice between left or right turn to 180°
+  }
 	return newangle;
 }
 
@@ -460,4 +501,26 @@ void correct_coords(double* coords){
   else if(coords[1] < 0){
     coords[1] = coords[1] + h;
   }
+}
+
+void create_environment(Mat& environment,int quality[][cols]){
+  for(int i =0;i<cols;i++){
+    for(int u=0;u<rows;u++){
+      quality[u][i] = distrib_quality(rd);
+    }
+  }
+  // Color squares according to quality
+  for(int i = 0;i < w;i++){
+    for(int u = 0; u < h;u++){
+      int q_color = quality[u/(h/rows)][i/(w/cols)];
+          environment.at<Vec3b>(u,i)= Vec3b(q_color*(255),q_color*(255),q_color*(255));
+    }
+  }
+}
+
+int get_quality(individuals inds, int id, int quality[][cols]){
+  int x = inds.coords[id][0];
+  int y = inds.coords[id][1];
+  int q = quality[y /(h/rows)][x/(w/cols)];
+  return q;
 }
