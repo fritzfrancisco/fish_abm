@@ -12,20 +12,18 @@
 #include <random>
 #include <fstream>
 
-#define w 1200
-#define h 600
 #define PI 3.14159265
-#define num 60
+#define num 20
 
-#define rows 300
-#define cols 600
+#define latitude 12
+#define longitude 6
+#define resolution 10 // must be 100 > resolution > 1
+#define res_factor 10 // should be: res_factor * resolution = ~ 100
 
-// const int sp_max = 30;
-// int sp = 2;
-// const int dsp_max = 20;
-// int dsp = 6;
-// const int nf_max = num;
-// int nf;
+#define w (latitude * resolution * res_factor)
+#define h (longitude * resolution * res_factor)
+#define cols (latitude * resolution)
+#define rows (longitude * resolution)
 
 using namespace std;
 using namespace cv;
@@ -35,42 +33,38 @@ uniform_int_distribution<int> distrib_choice(0, 1);
 uniform_int_distribution<int> distrib_error(-10, 10);
 uniform_int_distribution<int> distrib_rwalk(-45, 45);
 uniform_int_distribution<int> distrib_quality(0, 10);
+uniform_int_distribution<int>distrib_seed(25,50);
+uniform_int_distribution<int>distrib_sample(20,100);
 
 class Individuals {
 	public:
 		double coords[num][2]; // height n and width dim
 		double dir[num]; // fish direction between 0 and 360°
-		int lag[num]; // with length n
-		int state[num]; // 0 for random, 1 for directed
 		int color[num][3];
 		int n;
 		int dim;
 		double speed[num]; // movement speed
-		double dspeed; //dspeed + 1 = swimming speed / feeding speed
-		int nfollow;
+		bool sample[num];
+		int sample_rate[num];
+		int lag[num];
 };
 
 void move(Individuals& inds, int quality[][cols]);
-void initialize(Individuals& inds, int n, int dim); //, double speed, double dspeed, int nfollow
+void initialize(Individuals& inds, int n, int dim, double speed);
+void correct_coords(double* coords);
 void drawfish(Individuals inds, Mat image);
+void create_environment(Mat& environment, int quality[][cols]);
+void feed(Individuals& inds, int id, int quality[][cols], Mat& environment);
+void sample(Individuals& inds, int quality[][cols], Mat& environment);
+
 int in_zone(Individuals inds, int id, int fov, double r); // fov: field of view
-int state(Individuals inds, int id);
+int get_quality(Individuals inds, int id, int quality[][cols]);
+
 double collision(Individuals inds, int id, double newdir);
 double correct_angle(double dir);
 double get_angle(double* focal_coords, double focal_dir, double* pos);
 double social(Individuals inds, int id, int fov);
-double distance(double* coordsa, double* coordsb);
-int lag(int state, int lag);
-
-// double on_trackbar_dspeed(int, void*);
-// double on_trackbar_speed(int, void*);
-// int on_trackbar_nfollow(int, void*);
-
-double average_turn(vector<double> vec);
-void correct_coords(double* coords);
-
-void create_environment(Mat& environment, int quality[][cols]);
-int get_quality(Individuals inds, int id, int quality[][cols]);
+double average_turn(vector<double> vec, bool comb_weight);
 
 int main() {
 	srand(time(0));
@@ -88,34 +82,19 @@ int main() {
 	Mat fish_environment;
 
 	Individuals fish;
-	// fish.speed = 1;
-	// fish.dspeed = 1;
-	// fish.nfollow = num;
-
 	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow
-	initialize(fish, num, 2); //, fish.speed, fish.dspeed, fish.nfollow
+	initialize(fish, num, 2, 5);
 
 	for (int z = 0; z < 2000; z++) {
-		fish_image = Mat::zeros(h, w, CV_8UC3);
 
-		drawfish(fish, fish_image);
-
-		// cvtColor(fish_image, fish_mask, CV_BGR2GRAY, 0);
-		// threshold(fish_image, fish_mask, 60, 255, THRESH_BINARY);
-		//
-		// subtract(environment, fish_mask, fish_environment);
-
-		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
-
-		imshow(fish_window, fish_environment);
-		waitKey( 30 );
-
+		sample(fish, quality, environment);
 		move(fish, quality);
 
-		// char speed_trackbar[10];  // create trackbar in "Fish" window for changing speed
-	    // sprintf(speed_trackbar,"%g",fish.speed);
-	    // createTrackbar("Speed","Fish",&sp,sp_max);
-	    // fish.speed = on_trackbar_speed(fish.speed,0);
+		fish_image = Mat::zeros(h, w, CV_8UC3);
+		drawfish(fish, fish_image);
+		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
+		imshow(fish_window, fish_environment);
+		waitKey( 33 );
 
 	}
 	return(0);
@@ -123,37 +102,38 @@ int main() {
 
 void move(Individuals& inds, int quality[][cols]) {
 	for (int id = 0; id < inds.n; id++) {
-		double dir = correct_angle(inds.dir[id]);
+		if (inds.lag[id] == 0) {
+			double dir = correct_angle(inds.dir[id]);
 
-		inds.state[id] = 11 - get_quality(inds, id, quality); //state(inds, id);
-		inds.speed[id] = in_zone(inds, id, 180, 200) / 4;
-		double small_error = distrib_error(rd);
+			double small_error = distrib_error(rd);
+			double turn = social(inds, id, 330) + small_error;
 
-		double turn = social(inds, id, 330) + small_error;
+			dir = dir + turn;
 
-		dir = dir + turn;
-		inds.lag[id] = lag(inds.state[id], inds.lag[id]);
+			inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * PI / 180) * inds.sample[id];
+			inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * PI / 180) * inds.sample[id];
+			correct_coords(inds.coords[id]);
 
-		inds.coords[id][0] = inds.coords[id][0] + 0.5 * inds.state[id] * sqrt(pow(inds.speed[id] - 5, 2)) * cos(dir * PI / 180);
-		inds.coords[id][1] = inds.coords[id][1] + 0.5 * inds.state[id] * sqrt(pow(inds.speed[id] - 5, 2)) * sin(dir * PI / 180);
-		correct_coords(inds.coords[id]);
-
-		inds.dir[id] = dir;
+			inds.dir[id] = dir;
+		}
+		else {
+			inds.dir[id] = inds.dir[id] + distrib_error(rd);
+		}
 	}
 }
 
-void initialize(Individuals& inds, int n, int dim) { //, double speed, double dspeed, int nfollow
+void initialize(Individuals& inds, int n, int dim, double speed) {
 	inds.n = n;
 	inds.dim = dim;
-	inds.dspeed = 4;
-	inds.nfollow = 1000;
 	for (int i = 0; i < inds.n; i++) {
-		inds.lag[i] = 0;
 		inds.color[i][0] = 120 + rand() % 120;
 		inds.color[i][1] = 120 + rand() % 120;
 		inds.color[i][2] = 120 + rand() % 120;
 		inds.dir[i] = rand() % 360; // direction
-		inds.speed[i] = 5;
+		inds.speed[i] = speed;
+		inds.sample[i] = 1;
+		inds.sample_rate[i] = 100;
+		inds.lag[i] = 0; // 17 equals half a second
 		for (int u = 0; u < inds.dim; u++) {
 			if (u == 0) {
 				inds.coords[i][u] = w / 2 + rand() % 201 - 100; // x coord
@@ -211,9 +191,6 @@ int in_zone(Individuals inds, int id, int fov, double r) {
 
 			// dot product(direction vector of id, position vector of i)
 			angle =  acos((dirvector[0] * coords[0] + dirvector[1] * coords[1]) / dist) * 180 / PI;
-
-			// f_all_dotproduct << angle << ",\n";
-
 			if (angle < (fov / 2) && dist < r) {
 				c++;
 			}
@@ -273,8 +250,6 @@ double social(Individuals inds, int id, int fov) {
 			// angle between fish id direction vector and fish i pos vector, dot product(direction vector of id, position vector of i)
 			double angle =  acos((dirvector[0] * coords[0] + dirvector[1] * coords[1]) / dist) * 180 / PI;
 
-			// f_all_dotproduct << angle << ",\n";
-
 			if (dist < 200 && angle < (fov / 2)) {
 				if (dist < 15) {
 					neighbors_avoid_id.at(c_avoid) = i; // id of neighbor fish
@@ -291,8 +266,6 @@ double social(Individuals inds, int id, int fov) {
 						neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) + (distrib_choice(rd) - 0.5) * 360;
 					}
 					neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_turn.at(c_avoid) * (1 / (0.1 * pow((dist), 2) + 4)); // turning angle, change in direction (+/-), weighted with distance
-
-					// f_all_repulsion << neighbors_avoid_turn.at(c_avoid) << ",\n";
 					c_avoid++;
 				}
 				else if (dist < 100) {
@@ -305,8 +278,6 @@ double social(Individuals inds, int id, int fov) {
 
 					neighbors_align_angle.at(c_align) = get_angle(inds.coords[id], inds.dir[id], dir); // angle to neighbor
 					neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / (0.004 * pow((dist - 15), 2) + 2)); //turning angle, weighted with distance
-
-					// f_all_alignment << neighbors_align_turn.at(c_align) << ",\n";
 					c_align++;
 				}
 				else {
@@ -314,8 +285,6 @@ double social(Individuals inds, int id, int fov) {
 					neighbors_attract_dist.at(c_attract) = dist; // distance between neighbor and focal fish
 					neighbors_attract_angle.at(c_attract) = get_angle(inds.coords[id], inds.dir[id], inds.coords[i]); // angle to neighbor
 					neighbors_attract_turn.at(c_attract) = neighbors_attract_angle.at(c_attract) * (1 / (0.004 * pow((dist - 200), 2) + 2)); // weighted turning angle
-
-					// f_all_attraction << neighbors_attract_turn.at(c_attract) << ",\n";
 					c_attract++;
 				}
 			}
@@ -324,39 +293,40 @@ double social(Individuals inds, int id, int fov) {
 
 	double turn = 0;
 	if (n_avoid > 0) {
-		turn = average_turn(neighbors_avoid_turn);
-		// f_mean_repulsion << turn << ",\n";
+		turn = average_turn(neighbors_avoid_turn, 0);
 	}
 	else {
 		if (n_align > 0 && n_attract > 0) {
 			vector<double> comb_al_at(2);
-			comb_al_at.at(0) = average_turn(neighbors_align_turn);
-			comb_al_at.at(1) = average_turn(neighbors_attract_turn);
-			turn = average_turn(comb_al_at);
-			// f_mean_combination << turn << ",\n";
+			comb_al_at.at(0) = average_turn(neighbors_align_turn, 0);
+			comb_al_at.at(1) = average_turn(neighbors_attract_turn, 0);
+			turn = average_turn(comb_al_at, 1);
 		}
 		else if (n_align > 0) {
-			turn = average_turn(neighbors_align_turn);
-			// f_mean_alignment << turn << ",\n";
+			turn = average_turn(neighbors_align_turn, 0);
 		}
 		else if (n_attract > 0) {
-			turn = average_turn(neighbors_attract_turn);
-			// f_mean_attraction << turn << ",\n";
+			turn = average_turn(neighbors_attract_turn, 0);
 		}
 		else {
 			turn = distrib_rwalk(rd); // random walk if no social interactions
-			// f_random_walk << turn << ",\n";
 		}
 	}
 	return turn;
 }
 
-double average_turn(vector<double> vec) {
+double average_turn(vector<double> vec, bool comb_weight) {
 	double x_sum = 0;
 	double y_sum = 0;
 	for (int i = 0; i < vec.size(); i++) {
-		x_sum = x_sum + cos(vec.at(i) * PI / 180);
-		y_sum = y_sum + sin(vec.at(i) * PI / 180);
+		if (comb_weight) {
+			x_sum = x_sum + cos(vec.at(i) * PI / 180) * (1.2 - i);
+			y_sum = y_sum + sin(vec.at(i) * PI / 180) * (1.2 - i);
+		}
+		else {
+			x_sum = x_sum + cos(vec.at(i) * PI / 180);
+			y_sum = y_sum + sin(vec.at(i) * PI / 180);
+		}
 	}
 	double x = x_sum / vec.size();
 	double y = y_sum / vec.size();
@@ -375,14 +345,6 @@ double average_turn(vector<double> vec) {
 		}
 	}
 	return angle;
-}
-
-int state(Individuals inds, int id) {
-	int state = 0;
-	if (in_zone(inds, id, 180, 200) >= inds.nfollow && inds.lag[id] == 0) {
-		state = 1; // swimming state
-	}
-	return state;
 }
 
 double correct_angle(double dir) {
@@ -413,8 +375,6 @@ double get_angle(double* focal_coords, double focal_dir, double* pos) {
 	}
 
 	double angle = acos(point[0] / sqrt(pow(point[0], 2) + pow(point[1], 2))) * 180 / PI; // arccos of dot product between x-axis and point position
-	// f_all_dotproduct << angle << ",\n";
-
 	if (point[1] < 0) { // in our coordinates, +y is down, -y is up
 		angle = 360 - angle; // correct angle from 0 =< angle < 180 to 0 =< angle < 360 based on y coordinates
 	}
@@ -439,35 +399,6 @@ double get_angle(double* focal_coords, double focal_dir, double* pos) {
 	return newangle;
 }
 
-double distance(double* coordsa, double* coordsb) {
-	double distance = sqrt(pow(coordsa[0] - coordsb[0], 2) + pow(coordsa[1] - coordsb[1], 2));
-	return distance;
-}
-
-// int on_trackbar_nfollow (int, void*) {
-// 	return nf;
-// }
-//
-// double on_trackbar_dspeed (int, void*) {
-// 	return dsp;
-// }
-//
-// double on_trackbar_speed (int, void*) {
-// 	return sp;
-// }
-
-int lag(int state, int lag) {
-	if (state == 0) {
-		if (lag == 0) {
-			lag = 40;
-		}
-		else {
-			lag = lag - 1;
-		}
-	}
-	return lag;
-}
-
 void correct_coords(double* coords) {
 	if (coords[0] > w) {
 		coords[0] = coords[0] - w;
@@ -485,16 +416,48 @@ void correct_coords(double* coords) {
 }
 
 void create_environment(Mat& environment, int quality[][cols]) {
-	for (int i = 0; i < cols; i++) {
-		for (int u = 0; u < rows; u++) {
-			quality[u][i] = distrib_quality(rd);
+	int seed = distrib_seed(rd);
+    for(int u=0;u<rows;u++){
+		for(int i =0;i<cols;i++){
+			quality[u][i] = 0;
 		}
 	}
 
-	for (int i = 0; i < h; i++) {
-		for (int u = 0; u < w; u++) {
-			int q = quality[i / (h / rows)][u / (w / cols)];
-			environment.at<Vec3b>(i, u) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
+    if(seed > 0){
+	    int seed_coords[seed][2];
+	    uniform_int_distribution<int>distrib_rows(0,rows);
+	    uniform_int_distribution<int>distrib_cols(0,cols);
+
+	    for(int i = 0; i < seed;i++){
+			seed_coords[i][0] = distrib_rows(rd);
+			seed_coords[i][1] = distrib_cols(rd);
+			quality[seed_coords[i][0]][seed_coords[i][1]] = 10;
+	  	}
+	}
+
+    for(int p = 0; p < 8; p++){
+		for(int u = 0; u < rows; u++){
+			for(int i = 0; i < cols; i++){
+				if (u < rows - 1 && i < cols - 1) {
+					if(quality[u + 1][i] > 5 || quality[u + 1][i + 1]  > 5 || quality[u][i + 1] > 5){
+						quality[u][i] = distrib_quality(rd);
+					}
+				}
+			}
+		}
+		for(int u = rows - 1; u > 0; u--){
+			for(int i = cols - 1; i > 0; i--){
+				if(quality[u - 1][i] > 5 || quality[u - 1][i - 1]  > 5 || quality[u][i - 1] > 5){
+					quality[u][i] = distrib_quality(rd);
+				}
+			}
+		}
+	}
+
+	for (int y = 0; y < h; y++) {
+		for (int x = 0; x < w; x++) {
+			int q = quality[y / (h / rows)][x / (w / cols)];
+			environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
 		}
 	}
 }
@@ -505,4 +468,49 @@ int get_quality(Individuals inds, int id, int quality[][cols]) {
 
 	int q = quality[y / (h / rows)][x / (w / cols)];
 	return q;
+}
+
+void feed(Individuals& inds, int id, int quality[][cols], Mat& environment) {
+	int x = inds.coords[id][0];
+	int y = inds.coords[id][1];
+
+	int q = quality[y / (h / rows)][x / (w / cols)];
+	inds.sample_rate[id] = 10 * q;
+
+	if (q > 0) {
+		quality[y / (h / rows)][x / (w / cols)] = q - 1;
+		q = q - 1;
+	}
+
+	int y_min = y / (h / rows);
+	y_min = y_min * (h / rows);
+	int y_max = y_min + (h / rows) - 1;
+
+	int x_min = x / (w / cols);
+	x_min = x_min * (w / cols);
+	int x_max = x_min + (w / cols) - 1;
+
+	Point pt_min(x_min, y_min);
+	Point pt_max(x_max, y_max);
+	Scalar q_color(q * (255 / 10), q * (255 / 10), q * (255 / 10));
+	rectangle(environment, pt_min, pt_max, q_color, -1, 8, 0);
+}
+
+void sample(Individuals& inds, int quality[][cols], Mat& environment) {
+	for (int id = 0; id < inds.n; id++) {
+		if (inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd)){
+			inds.sample[id] = 0;
+			inds.lag[id] = 5;
+			feed(inds, id, quality, environment);
+		}
+		else if (inds.lag[id] == 0) {
+			inds.sample[id] = 1;
+			inds.sample_rate[id] = inds.sample_rate[id] + 1;
+		}
+		else {
+			inds.lag[id] = inds.lag[id] - 1;
+			inds.sample[id] = 1;
+			inds.sample_rate[id] = inds.sample_rate[id] + 1;
+		}
+	}
 }
