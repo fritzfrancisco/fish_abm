@@ -18,15 +18,15 @@ using namespace cv;
 
 #define latitude 14
 #define longitude 7
-#define resolution 12 // must be 100 > resolution > 1
-#define res_factor 12 // should be: res_factor * resolution = 100
+#define resolution 10 // must be 100 > resolution > 1
+#define res_factor 10 // should be: res_factor * resolution = 100
 
 #define w (latitude * resolution * res_factor)
 #define h (longitude * resolution * res_factor)
 #define rows (longitude*resolution)
 #define cols (latitude*resolution)
 
-#define num 25
+#define num 45
 
 const int sp_max = 50;
 int sp;
@@ -40,8 +40,8 @@ uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
 uniform_int_distribution<int>distrib_quality(0,10);
-uniform_int_distribution<int>distrib_seed(0,20);
-uniform_int_distribution<int>distrib_sample(20,100);
+uniform_int_distribution<int>distrib_seed(0,12);
+uniform_int_distribution<int>distrib_sample(0,100);
 
 
 class individuals{
@@ -127,6 +127,20 @@ int main(){
 
 void move(individuals& inds,int quality[][cols]){
   for(int id = 0; id < inds.n;id++){
+
+    int n_avoid = in_zone(inds, id, 330, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
+    int n_align = in_zone(inds, id, 330, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
+    int n_attract = in_zone(inds, id, 330, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
+
+    // avoid being left behind.lag decreases with increasing distance to group
+    if(n_avoid == 0 && n_align == 0 && inds.lag[id] != 0 && n_attract > 0){
+      inds.lag[id] = inds.lag[id] - 1;
+    }
+    // being in front has a cost
+    // if(in_zone(inds,id,180,200) == 0){
+    //   inds.lag[id] = inds.lag[id] + 1;
+    // }
+
     if(inds.lag[id] == 0){
       double dir = correctangle(inds.dir[id]);
       double turn = social(inds,id,330) + distrib_error(rd); // maximum error of movement is +- 5°
@@ -546,7 +560,7 @@ void feed(individuals& inds,int id, int quality[][cols],Mat& environment){
 
     if(q>0){
       quality[y /(h/rows)][x/(w/cols)] = q - 1;
-      q = q -1;
+      q = q - 1;
     }
 
     // determining box in quality matrix
