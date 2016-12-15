@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <vector>
 #include <fstream>
+#include <stdlib.h>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -18,8 +19,8 @@ using namespace cv;
 
 #define latitude 14
 #define longitude 7
-#define resolution 10 // must be 100 > resolution > 1
-#define res_factor 10 // should be: res_factor * resolution = 100
+#define resolution 4 // must be 100 > resolution > 1
+#define res_factor 25 // should be: res_factor * resolution = 100
 
 #define w (latitude * resolution * res_factor)
 #define h (longitude * resolution * res_factor)
@@ -40,8 +41,8 @@ uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
 uniform_int_distribution<int>distrib_quality(0,10);
-uniform_int_distribution<int>distrib_seed(0,12);
-uniform_int_distribution<int>distrib_sample(0,100);
+uniform_int_distribution<int>distrib_seed(0,10);
+uniform_int_distribution<int>distrib_sample(20,100);
 
 
 class individuals{
@@ -54,6 +55,7 @@ class individuals{
     int colors[num][3];     // individual color in RGB
     int nfollow;
     int sample_rate [num];
+    int speed_factor[num];
 
     double speed[num];      // movement speed
     double coords [num][2]; // height n * width dim
@@ -66,6 +68,7 @@ class individuals{
 int in_zone(individuals inds,int id, int fov,double r); // fov: field of view as angle
 // int on_trackbar_nfollow(int,void*);
 int get_quality(individuals inds, int id, int quality[][cols]);
+int sum_array(int quality[][cols]);
 
 void move(individuals& inds, int quality[][cols]);
 void initialize(individuals& inds,int n, int dim, double speed);
@@ -80,11 +83,19 @@ double social(individuals inds,int id,int fov);
 double collision(individuals inds, int id, double newdir);
 double getangle(double* focal_coords, double focal_dir, double* position);
 double averageturn(vector<double> vec, bool comb_weight);
+double get_speed(individuals inds,int id);
 
 int main(){
+
+  srand(time(0));
+
+  ofstream sum_quality;
+  sum_quality.open("sum_quality.csv");
+
+  while(sum_quality){
+    for(int n = 0;n < 10;n++){
   // cout << "Created using: OpenCV version 2.4.13" << endl;
   // cout << "Currently using: " << "OpenCV version : " << CV_VERSION << endl;
-  srand(time(0));
 
   // Creating window for imaging
   char fish_window[] = "Fish";
@@ -101,26 +112,27 @@ int main(){
   // imshow(env_window,environment);
 
   individuals fish;
-  // required for trakcbar initiation
-  // fish.speed = 1;
-  // fish.dspeed = 5;
-  // fish.nfollow = 0;
-  // fish.dim = 2;
-  initialize(fish,num,2,3); // initialize: object fish,num individuals, dimensions,speed,dspeed,n individuals to follow
 
-  for(int z = 0; z < 10000; z++){
+  initialize(fish,num,2,3); // initialize: object fish,num individuals, dimensions,speed
+
+  // sum_quality << sum_array(quality) << ",";
+  sum_quality << endl;
+  for(int z = 0; z < 1000; z++){
       // plot fish on black background
-      fish_image = Mat::zeros(h,w,CV_8UC3);
+      // fish_image = Mat::zeros(h,w,CV_8UC3);
 
       sample(fish,quality,environment);
-
       move(fish,quality);
-      drawfish(fish,fish_image);
-      addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
+      // drawfish(fish,fish_image);
+      // addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
+      // imshow(fish_window,fishinenvironment);
 
-      imshow(fish_window,fishinenvironment);
+      sum_quality << sum_array(quality) << ",";
 
-      waitKey(30);
+      // waitKey(30);
+      }
+    }
+    sum_quality.close();
     }
     return(0);
   }
@@ -128,27 +140,16 @@ int main(){
 void move(individuals& inds,int quality[][cols]){
   for(int id = 0; id < inds.n;id++){
 
-    int n_avoid = in_zone(inds, id, 330, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
-    int n_align = in_zone(inds, id, 330, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
-    int n_attract = in_zone(inds, id, 330, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
-
-    // avoid being left behind.lag decreases with increasing distance to group
-    if(n_avoid == 0 && n_align == 0 && inds.lag[id] != 0 && n_attract > 0){
-      inds.lag[id] = inds.lag[id] - 1;
-    }
-    // being in front has a cost
-    // if(in_zone(inds,id,180,200) == 0){
-    //   inds.lag[id] = inds.lag[id] + 1;
-    // }
-
     if(inds.lag[id] == 0){
       double dir = correctangle(inds.dir[id]);
       double turn = social(inds,id,330) + distrib_error(rd); // maximum error of movement is +- 5°
 
       dir = dir + turn;
 
-      inds.coords[id][0] =  inds.coords[id][0] + inds.speed[id] * cos(dir * M_PI / 180) * inds.sample[id];
-      inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * M_PI/ 180) * inds.sample[id];
+      inds.speed_factor[id] = get_speed(inds,id);
+
+      inds.coords[id][0] =  inds.coords[id][0] + inds.speed[id] * cos(dir * M_PI / 180) * inds.speed_factor[id];
+      inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * M_PI/ 180) * inds.speed_factor[id];
       correct_coords(inds.coords[id]);
       inds.dir[id] = dir;
     }
@@ -163,13 +164,13 @@ void initialize(individuals& inds, int n ,int dim, double speed){
   inds.dim = dim;
 
   for(int i = 0; i < inds.n; i++){
-    inds.sample[i] = 1;
     inds.sample_rate[i] = 100;
+    inds.speed_factor[i] = 1;
     inds.speed[i] = speed;
     inds.colors[i][0] = 80 + rand()%155;
     inds.colors[i][1] = 80 + rand()%155;
     inds.colors[i][2] = 80 + rand()%155;
-    inds.dir[i] = rand()%361; // all individuals facing x-axis
+    inds.dir[i] = distrib_randomwalk(rd);
     inds.lag[i] = 0; // equals handling time
     // inds.dir[i] = rand() % 20 + 350; // field of vision
 
@@ -497,11 +498,11 @@ void create_environment(Mat& environment,int quality[][cols]){
     quality[seed_coords[i][0]][seed_coords[i][1]] = 10;
     }
   }
-  for(int p = 0;p < 15; p++){
+  for(int p = 0;p < 20; p++){
       for(int u=0;u<rows;u++){
         for(int i =0;i<cols;i++){
           if(u < rows-1 && i < cols-1){
-            if(quality[u+1][i] > 8 || quality[u+1][i+1] > 8 || quality[u][i+1]){
+            if(quality[u+1][i] > p || quality[u+1][i+1] > p || quality[u][i+1]){
               quality[u][i] = distrib_quality(rd);
           }
         }
@@ -510,7 +511,7 @@ void create_environment(Mat& environment,int quality[][cols]){
 
   for(int u = rows - 1;u > 0;u--){
       for(int i = cols - 1;i > 0;i--){
-          if(quality[u-1][i] > 8 || quality[u-1][i-1] > 8 || quality[u][i-1]){
+          if(quality[u-1][i] > p || quality[u-1][i-1] > p || quality[u][i-1]){
           quality[u][i] = distrib_quality(rd);
         }
       }
@@ -535,17 +536,23 @@ int get_quality(individuals inds, int id, int quality[][cols]){
 
 void sample(individuals& inds, int quality[][cols], Mat& environment){
   for(int id = 0; id < inds.n;id++){
-    if(inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd)){
-        inds.sample[id] = 0;
+    int n_avoid = in_zone(inds, id, 330, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
+    int n_align = in_zone(inds, id, 330, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
+    int n_attract = in_zone(inds, id, 330, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
+    bool alone = (n_avoid == 0 && n_align == 0 && n_attract > 0);
+    // avoid being left behind.lag decreases with increasing distance to group
+    if(n_avoid == 0 && n_align == 0 && inds.lag[id] != 0 && n_attract > 0){
+      inds.lag[id] = inds.lag[id] - 1;
+    }
+
+    if(inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd) && alone == 0){
         inds.lag[id] = 5;
         feed(inds,id,quality,environment);
       }
     else if(inds.lag[id] == 0){
-      inds.sample[id] = 1;
       inds.sample_rate[id] = inds.sample_rate[id] + 1;
     }
     else{
-      inds.sample[id] = 1;
       inds.lag[id] = inds.lag[id] - 1;
       inds.sample_rate[id] = inds.sample_rate[id] + 1;
     }
@@ -573,5 +580,21 @@ void feed(individuals& inds,int id, int quality[][cols],Mat& environment){
     int x_max = x_min + (w/cols);
 
     // draw environment boxes as filled rectangles (255/max. quality)
-    rectangle(environment,Point(x_min,y_min),Point(x_max-1,y_max-1),Scalar(q*(255/10),q*(255/10),q*(255/10)),-1,8,0);
+    // rectangle(environment,Point(x_min,y_min),Point(x_max-1,y_max-1),Scalar(q*(255/10),q*(255/10),q*(255/10)),-1,8,0);
+}
+
+double get_speed(individuals inds,int id){
+  int count = in_zone(inds,id,180,100);
+  double speed_factor = 1 + count/(num/2);
+  return speed_factor;
+}
+
+int sum_array(int quality[][cols]){
+  int sum = 0;
+  for(int i = 0; i < cols;i++){
+    for(int u = 0;u < rows;u++){
+      sum = sum + quality[u][i];
+    }
+  }
+  return sum;
 }
