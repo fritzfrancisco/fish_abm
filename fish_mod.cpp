@@ -17,8 +17,8 @@
 using namespace std;
 using namespace cv;
 
-#define latitude 14
-#define longitude 7
+#define latitude 30
+#define longitude 15
 #define resolution 4 // must be 100 > resolution > 1
 #define res_factor 25 // should be: res_factor * resolution = 100
 
@@ -27,7 +27,7 @@ using namespace cv;
 #define rows (longitude*resolution)
 #define cols (latitude*resolution)
 
-#define num 45
+#define num 60
 
 const int sp_max = 50;
 int sp;
@@ -41,8 +41,8 @@ uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
 uniform_int_distribution<int>distrib_quality(0,10);
-uniform_int_distribution<int>distrib_seed(0,10);
-uniform_int_distribution<int>distrib_sample(20,100);
+uniform_int_distribution<int>distrib_seed(60,60);
+uniform_int_distribution<int>distrib_sample(40,100);
 
 
 class individuals{
@@ -94,6 +94,7 @@ int main(){
 
   while(sum_quality){
     for(int n = 0;n < 10;n++){
+      cout << "Processing..."<< "run: "<< n << "\n";
   // cout << "Created using: OpenCV version 2.4.13" << endl;
   // cout << "Currently using: " << "OpenCV version : " << CV_VERSION << endl;
 
@@ -108,21 +109,23 @@ int main(){
   // Establish mixed pattern of environment with quality[h]x[w] squares
   int quality[rows][cols];
   create_environment(environment,quality);
-
+  cout << "successfully created quality" << "\n";
   // imshow(env_window,environment);
 
   individuals fish;
-
   initialize(fish,num,2,3); // initialize: object fish,num individuals, dimensions,speed
+  cout << "successfully initialized fish" << "\n";
 
   // sum_quality << sum_array(quality) << ",";
-  sum_quality << endl;
+  sum_quality << "\n";
   for(int z = 0; z < 1000; z++){
       // plot fish on black background
       // fish_image = Mat::zeros(h,w,CV_8UC3);
 
       sample(fish,quality,environment);
+      cout << "sampling: " << z << " finished" << "\n";
       move(fish,quality);
+      cout << "moving: " << z << " finished" << "\n";
       // drawfish(fish,fish_image);
       // addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
       // imshow(fish_window,fishinenvironment);
