@@ -14,16 +14,8 @@
 
 #define PI 3.14159265
 #define num 60
-
-#define latitude 30
-#define longitude 15
-#define resolution 4 // must be 100 > resolution > 1
-#define res_factor 25 // should be: res_factor * resolution = ~ 100
-
-#define w (latitude * resolution * res_factor)
-#define h (longitude * resolution * res_factor)
-#define cols (latitude * resolution)
-#define rows (longitude * resolution)
+#define n_cols 96 // must be Structure.longitude * resolution
+#define n_rows 54 // must be Structure.latitude * resolution
 
 using namespace std;
 using namespace cv;
@@ -33,7 +25,7 @@ uniform_int_distribution<int> distrib_choice(0, 1);
 uniform_int_distribution<int> distrib_error(-10, 10);
 uniform_int_distribution<int> distrib_rwalk(-45, 45);
 uniform_int_distribution<int> distrib_quality(0, 10);
-uniform_int_distribution<int>distrib_seed(80, 80);
+uniform_int_distribution<int>distrib_seed(20, 20);
 uniform_int_distribution<int>distrib_sample(40, 100);
 
 class Individuals {
@@ -49,24 +41,37 @@ class Individuals {
 		int lag[num];
 };
 
-void move(Individuals& inds, int quality[][cols]);
-void initialize(Individuals& inds, int n, int dim, double speed);
-void correct_coords(double* coords);
-void drawfish(Individuals inds, Mat image);
-void create_environment(Mat& environment, int quality[][cols]);
-void feed(Individuals& inds, int id, int quality[][cols], Mat& environment);
-void sample(Individuals& inds, int quality[][cols], Mat& environment);
+class Structure {
+	public:
+		int latitude = 48;
+		int longitude = 27;
+		int resolution = 2; // must be 100 > resolution > 1
+		int res_factor = 20; // should be: res_factor * resolution = ~ 100
 
-int in_zone(Individuals inds, int id, int fov, double r); // fov: field of view
-int get_quality(Individuals inds, int id, int quality[][cols]);
-int sum_array(int quality[][cols]);
+		int w = latitude * resolution * res_factor;
+		int h = longitude * resolution * res_factor;
+		int cols = latitude * resolution;
+		int rows = longitude * resolution;
+};
+
+void move(Individuals& inds, Structure struc);
+void initialize(Individuals& inds, int n, int dim, double speed, Structure struc);
+void correct_coords(double* coords, Structure struc);
+void drawfish(Individuals inds, Mat image);
+void create_environment(Mat& environment, int quality[][n_cols], Structure struc);
+void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, Structure struc);
+void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structure struc);
+
+int in_zone(Individuals inds, int id, int fov, double r, Structure struc); // fov: field of view
+int get_quality(Individuals inds, int id, int quality[][n_cols], Structure struc);
+int sum_array(int quality[][n_cols], Structure struc);
 
 double collision(Individuals inds, int id, double newdir);
 double correct_angle(double dir);
-double get_angle(double* focal_coords, double focal_dir, double* pos);
-double social(Individuals inds, int id, int fov);
+double get_angle(double* focal_coords, double focal_dir, double* pos, Structure struc);
+double social(Individuals inds, int id, int fov, Structure struc);
 double average_turn(vector<double> vec, bool comb_weight);
-double get_speed(Individuals inds, int id);
+double get_speed(Individuals inds, int id, Structure struc);
 
 int main() {
 	// ofstream sum_quality;
@@ -83,61 +88,73 @@ int main() {
 
 	srand(time(0));
 
+	Structure fish_struc;
+
+	cout << "environment structure object initialized\n";
+	Individuals fish;
+	// initializes object fish of class Individuals with num individuals, dimensions, speed and initializes structure
+	initialize(fish, num, 2, 5, fish_struc);
+
+	cout << "fish individuals object initialized\n";
+
 	char fish_window[] = "Fish";
-	Mat fish_image = Mat::zeros(h, w, CV_8UC3);
-	// Mat fish_mask = Mat::zeros(h, w, CV_8UC3);
-
 	char environment_window[] = "Environment";
-	Mat environment = Mat::zeros(h, w, CV_8UC3);
-
-	int quality[rows][cols];
-	create_environment(environment, quality);
-
+	Mat fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
+	Mat environment = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 	Mat fish_environment;
 
-	Individuals fish;
-	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow
-	initialize(fish, num, 2, 5);
+	int quality[n_rows][n_cols];
+
+	cout << "2d quality array..\n";
+	create_environment(environment, quality, fish_struc);
 
 	// sum_quality << sum_array(quality) << ";\n";
 
+	cout << "starting simulation..\n";
 	for (int z = 0; z < 1000; z++) {
+		if (z % 100 == 0) {
+			cout << ".. step: " << z << "\n";
+		}
 
-		sample(fish, quality, environment);
-		move(fish, quality);
+		sample(fish, quality, environment, fish_struc);
+		move(fish, fish_struc);
 
-		fish_image = Mat::zeros(h, w, CV_8UC3);
+		fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 		drawfish(fish, fish_image);
 		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
-		imshow(fish_window, fish_environment);
+		// imshow(fish_window, fish_environment);
 
 		output_video.write(fish_environment);
 
 		// sum_quality << sum_array(quality) << ";\n";
 
-		waitKey(33);
+		// waitKey(33);
 
 	}
 
+	cout << "simulation complete\n";
+
 	// sum_quality.close();
+
 	return(0);
 }
 
-void move(Individuals& inds, int quality[][cols]) {
+void move(Individuals& inds, Structure struc) {
 	for (int id = 0; id < inds.n; id++) {
 		if (inds.lag[id] == 0) {
 			double dir = correct_angle(inds.dir[id]);
 
 			double small_error = distrib_error(rd);
-			double turn = social(inds, id, 330) + small_error;
+			double turn = social(inds, id, 330, struc) + small_error;
 
 			dir = dir + turn;
 
-			inds.speed_factor[id] = get_speed(inds, id);
+			inds.speed_factor[id] = get_speed(inds, id, struc);
 
 			inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * PI / 180) * inds.speed_factor[id];
 			inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * PI / 180) * inds.speed_factor[id];
-			correct_coords(inds.coords[id]);
+
+			correct_coords(inds.coords[id], struc);
 
 			inds.dir[id] = dir;
 		}
@@ -147,7 +164,7 @@ void move(Individuals& inds, int quality[][cols]) {
 	}
 }
 
-void initialize(Individuals& inds, int n, int dim, double speed) {
+void initialize(Individuals& inds, int n, int dim, double speed, Structure struc) {
 	inds.n = n;
 	inds.dim = dim;
 	for (int i = 0; i < inds.n; i++) {
@@ -161,10 +178,10 @@ void initialize(Individuals& inds, int n, int dim, double speed) {
 		inds.lag[i] = 0; // 17 equals half a second
 		for (int u = 0; u < inds.dim; u++) {
 			if (u == 0) {
-				inds.coords[i][u] = w / 2 + rand() % 201 - 100; // x coord
+				inds.coords[i][u] = struc.w / 2 + rand() % 201 - 100; // x coord
 			}
 			else {
-				inds.coords[i][u] = h / 2 + rand() % 201 - 100; // y coord
+				inds.coords[i][u] = struc.h / 2 + rand() % 201 - 100; // y coord
 			}
 		}
 	}
@@ -187,7 +204,7 @@ void drawfish(Individuals inds, Mat image) {
 	}
 }
 
-int in_zone(Individuals inds, int id, int fov, double r) {
+int in_zone(Individuals inds, int id, int fov, double r, Structure struc) {
 	int c = 0; // count num of inds in front of id
 	double dirvector[2]; // direction vector (fish id) of lenth 1
 	dirvector[0] = cos(inds.dir[id] * PI / 180);
@@ -198,18 +215,18 @@ int in_zone(Individuals inds, int id, int fov, double r) {
 		if (i != id) {
 			double coords[2];
 			coords[0] = inds.coords[i][0] - inds.coords[id][0]; // set fish id to x = 0 and correct for continous environment
-			if (coords[0] > w / 2) {
-				coords[0] = coords[0] - w;
+			if (coords[0] > struc.w / 2) {
+				coords[0] = coords[0] - struc.w;
 			}
-			else if (coords[0] < - w / 2) {
-				coords[0] = coords[0] + w;
+			else if (coords[0] < - struc.w / 2) {
+				coords[0] = coords[0] + struc.w;
 			}
 			coords[1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
-			if (coords[1] > h / 2) {
-				coords[1] = coords[1] - h;
+			if (coords[1] > struc.h / 2) {
+				coords[1] = coords[1] - struc.h;
 			}
-			else if (coords[1] < - h / 2) {
-				coords[1] = coords[1] + h;
+			else if (coords[1] < - struc.h / 2) {
+				coords[1] = coords[1] + struc.h;
 			}
 
 			dist = sqrt(pow(coords[0], 2) + pow(coords[1], 2)); // calculate absolute distances of respective i to id:
@@ -224,14 +241,14 @@ int in_zone(Individuals inds, int id, int fov, double r) {
 	return c;
 }
 
-double social(Individuals inds, int id, int fov) {
+double social(Individuals inds, int id, int fov, Structure struc) {
 	double dirvector[2]; // direction vector (focal fish) of lenth 1
 	dirvector[0] = cos(inds.dir[id] * PI / 180);
 	dirvector[1] = sin(inds.dir[id] * PI / 180);
 
-	int n_avoid = in_zone(inds, id, fov, 15); // number of neighbors in respective zones
-	int n_align = in_zone(inds, id, fov, 100) - n_avoid;
-	int n_attract = in_zone(inds, id, fov, 200) - (n_avoid + n_align);
+	int n_avoid = in_zone(inds, id, fov, 15, struc); // number of neighbors in respective zones
+	int n_align = in_zone(inds, id, fov, 100, struc) - n_avoid;
+	int n_attract = in_zone(inds, id, fov, 200, struc) - (n_avoid + n_align);
 
 	vector<double> neighbors_avoid_id(n_avoid); // identies of all neighbors in zone of repulsion: id, dist, angle to neighbor, newdir of focal fish
 	vector<double> neighbors_avoid_dist(n_avoid);
@@ -256,18 +273,18 @@ double social(Individuals inds, int id, int fov) {
 		if (i != id) {
 			double coords[2]; // coords of comparison fish
 			coords[0] = inds.coords[i][0] - inds.coords[id][0]; // set focal fish to x = 0 and correct for continous environment
-			if (coords[0] > w / 2) {
-				coords[0] = coords[0] - w;
+			if (coords[0] > struc.w / 2) {
+				coords[0] = coords[0] - struc.w;
 			}
-			else if (coords[0] < - w / 2) {
-				coords[0] = coords[0] + w;
+			else if (coords[0] < - struc.w / 2) {
+				coords[0] = coords[0] + struc.w;
 			}
 			coords[1] = inds.coords[i][1] - inds.coords[id][1]; // set fish id to y = 0
-			if (coords[1] > h / 2) {
-				coords[1] = coords[1] - h;
+			if (coords[1] > struc.h / 2) {
+				coords[1] = coords[1] - struc.h;
 			}
-			else if (coords[1] < - h / 2) {
-				coords[1] = coords[1] + h;
+			else if (coords[1] < - struc.h / 2) {
+				coords[1] = coords[1] + struc.h;
 			}
 
 			double dist = sqrt(pow(coords[0], 2) + pow(coords[1], 2)); // calculate absolute distances of respective i to id
@@ -279,7 +296,7 @@ double social(Individuals inds, int id, int fov) {
 				if (dist < 15) {
 					neighbors_avoid_id.at(c_avoid) = i; // id of neighbor fish
 					neighbors_avoid_dist.at(c_avoid) = dist; // distance between neighbor and focal fish
-					neighbors_avoid_angle.at(c_avoid) = get_angle(inds.coords[id], inds.dir[id], inds.coords[i]); // angle to neighbor
+					neighbors_avoid_angle.at(c_avoid) = get_angle(inds.coords[id], inds.dir[id], inds.coords[i], struc); // angle to neighbor
 
 					if (neighbors_avoid_angle.at(c_avoid) > 0) {
 						neighbors_avoid_turn.at(c_avoid) = neighbors_avoid_angle.at(c_avoid) - 180;
@@ -301,14 +318,14 @@ double social(Individuals inds, int id, int fov) {
 					dir[0] = cos(inds.dir[i] * PI / 180) + inds.coords[id][0]; // unit vector of neighbor i, starting at focal fish
 					dir[1] = sin(inds.dir[i] * PI / 180) + inds.coords[id][1];
 
-					neighbors_align_angle.at(c_align) = get_angle(inds.coords[id], inds.dir[id], dir); // angle to neighbor
+					neighbors_align_angle.at(c_align) = get_angle(inds.coords[id], inds.dir[id], dir, struc); // angle to neighbor
 					neighbors_align_turn.at(c_align) = neighbors_align_angle.at(c_align) * (1 / (0.004 * pow((dist - 15), 2) + 2)); //turning angle, weighted with distance
 					c_align++;
 				}
 				else {
 					neighbors_attract_id.at(c_attract) = i; // id of neighbor fish
 					neighbors_attract_dist.at(c_attract) = dist; // distance between neighbor and focal fish
-					neighbors_attract_angle.at(c_attract) = get_angle(inds.coords[id], inds.dir[id], inds.coords[i]); // angle to neighbor
+					neighbors_attract_angle.at(c_attract) = get_angle(inds.coords[id], inds.dir[id], inds.coords[i], struc); // angle to neighbor
 					neighbors_attract_turn.at(c_attract) = neighbors_attract_angle.at(c_attract) * (1 / (0.004 * pow((dist - 200), 2) + 2)); // weighted turning angle
 					c_attract++;
 				}
@@ -382,21 +399,21 @@ double correct_angle(double dir) {
 	return dir;
 }
 
-double get_angle(double* focal_coords, double focal_dir, double* pos) {
+double get_angle(double* focal_coords, double focal_dir, double* pos, Structure struc) {
 	double point[2];
 	point[0] = pos[0] - focal_coords[0]; // move point in respect to setting fish id to 0,0
-	if (point[0] > w / 2) {
-		point[0] = point[0] - w;
+	if (point[0] > struc.w / 2) {
+		point[0] = point[0] - struc.w;
 	}
-	else if (point[0] < - w / 2) {
-		point[0] = point[0] + w;
+	else if (point[0] < - struc.w / 2) {
+		point[0] = point[0] + struc.w;
 	}
 	point[1] = pos[1] - focal_coords[1];
-	if (point[1] > h / 2) {
-		point[1] = point[1] - h;
+	if (point[1] > struc.h / 2) {
+		point[1] = point[1] - struc.h;
 	}
-	else if (point[1] < - h / 2) {
-		point[1] = point[1] + h;
+	else if (point[1] < - struc.h / 2) {
+		point[1] = point[1] + struc.h;
 	}
 
 	double angle = acos(point[0] / sqrt(pow(point[0], 2) + pow(point[1], 2))) * 180 / PI; // arccos of dot product between x-axis and point position
@@ -424,54 +441,61 @@ double get_angle(double* focal_coords, double focal_dir, double* pos) {
 	return newangle;
 }
 
-void correct_coords(double* coords) {
-	if (coords[0] > w) {
-		coords[0] = coords[0] - w;
+void correct_coords(double* coords, Structure struc) {
+	if (coords[0] > struc.w) {
+		coords[0] = coords[0] - struc.w;
 	}
 	else if (coords[0] < 0) {
-		coords[0] = coords[0] + w;
+		coords[0] = coords[0] + struc.w;
 	}
 
-	if (coords[1] > h) {
-		coords[1] = coords[1] - h;
+	if (coords[1] > struc.h) {
+		coords[1] = coords[1] - struc.h;
 	}
 	else if (coords[1] < 0) {
-		coords[1] = coords[1] + h;
+		coords[1] = coords[1] + struc.h;
 	}
 }
 
-void create_environment(Mat& environment, int quality[][cols]) {
+void create_environment(Mat& environment, int quality[][n_cols], Structure struc) {
 	int seed = distrib_seed(rd);
-    for(int u=0;u<rows;u++){
-		for(int i =0;i<cols;i++){
+
+	cout << ".. number of seeds: " << seed << "\n";
+
+    for (int u = 0; u < struc.rows; u++) {
+		for (int i =0; i < struc.cols; i++) {
 			quality[u][i] = 0;
 		}
 	}
 
+	cout << ".. array initialized with zeros\n";
+
     if(seed > 0){
 	    int seed_coords[seed][2];
-	    uniform_int_distribution<int>distrib_rows(0,rows);
-	    uniform_int_distribution<int>distrib_cols(0,cols);
+	    uniform_int_distribution<int>distrib_rows(0,struc.rows);
+	    uniform_int_distribution<int>distrib_cols(0,struc.cols);
 
-	    for(int i = 0; i < seed;i++){
+	    for(int i = 0; i < seed; i++){
 			seed_coords[i][0] = distrib_rows(rd);
 			seed_coords[i][1] = distrib_cols(rd);
 			quality[seed_coords[i][0]][seed_coords[i][1]] = 10;
 	  	}
 	}
 
+	cout << ".. seed coordinates initialized\n";
+
     for(int p = 0; p < 20; p++){
-		for(int u = 0; u < rows; u++){
-			for(int i = 0; i < cols; i++){
-				if (u < rows - 1 && i < cols - 1) {
+		for(int u = 0; u < struc.rows; u++){
+			for(int i = 0; i < struc.cols; i++){
+				if (u < struc.rows - 1 && i < struc.cols - 1) {
 					if(quality[u + 1][i] > p || quality[u + 1][i + 1]  > p || quality[u][i + 1] > p){
 						quality[u][i] = distrib_quality(rd);
 					}
 				}
 			}
 		}
-		for(int u = rows - 1; u > 0; u--){
-			for(int i = cols - 1; i > 0; i--){
+		for(int u = struc.rows - 1; u > 0; u--){
+			for(int i = struc.cols - 1; i > 0; i--){
 				if(quality[u - 1][i] > 5 || quality[u - 1][i - 1]  > 5 || quality[u][i - 1] > 5){
 					quality[u][i] = distrib_quality(rd);
 				}
@@ -479,41 +503,41 @@ void create_environment(Mat& environment, int quality[][cols]) {
 		}
 	}
 
-	for (int y = 0; y < h; y++) {
-		for (int x = 0; x < w; x++) {
-			int q = quality[y / (h / rows)][x / (w / cols)];
+	for (int y = 0; y < struc.h; y++) {
+		for (int x = 0; x < struc.w; x++) {
+			int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
 			environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
 		}
 	}
 }
 
-int get_quality(Individuals inds, int id, int quality[][cols]) {
+int get_quality(Individuals inds, int id, int quality[][n_cols], Structure struc) {
 	int x = inds.coords[id][0];
 	int y = inds.coords[id][1];
 
-	int q = quality[y / (h / rows)][x / (w / cols)];
+	int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
 	return q;
 }
 
-void feed(Individuals& inds, int id, int quality[][cols], Mat& environment) {
+void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, Structure struc) {
 	int x = inds.coords[id][0];
 	int y = inds.coords[id][1];
 
-	int q = quality[y / (h / rows)][x / (w / cols)];
+	int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
 	inds.sample_rate[id] = 10 * q;
 
 	if (q > 0) {
-		quality[y / (h / rows)][x / (w / cols)] = q - 1;
+		quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)] = q - 1;
 		q = q - 1;
 	}
 
-	int y_min = y / (h / rows);
-	y_min = y_min * (h / rows);
-	int y_max = y_min + (h / rows) - 1;
+	int y_min = y / (struc.h / struc.rows);
+	y_min = y_min * (struc.h / struc.rows);
+	int y_max = y_min + (struc.h / struc.rows) - 1;
 
-	int x_min = x / (w / cols);
-	x_min = x_min * (w / cols);
-	int x_max = x_min + (w / cols) - 1;
+	int x_min = x / (struc.w / struc.cols);
+	x_min = x_min * (struc.w / struc.cols);
+	int x_max = x_min + (struc.w / struc.cols) - 1;
 
 	Point pt_min(x_min, y_min);
 	Point pt_max(x_max, y_max);
@@ -521,16 +545,16 @@ void feed(Individuals& inds, int id, int quality[][cols], Mat& environment) {
 	rectangle(environment, pt_min, pt_max, q_color, -1, 8, 0);
 }
 
-void sample(Individuals& inds, int quality[][cols], Mat& environment) {
+void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structure struc) {
 	for (int id = 0; id < inds.n; id++) {
-		int n_avoid = in_zone(inds, id, 330, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
-		int n_align = in_zone(inds, id, 330, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
-		int n_attract = in_zone(inds, id, 330, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
+		int n_avoid = in_zone(inds, id, 330, 15, struc); // number of individals to avoid. [id,dist,angle,angle to neighbor]
+		int n_align = in_zone(inds, id, 330, 100, struc) - n_avoid; // number of individals to align to [id,dist,angle between directions]
+		int n_attract = in_zone(inds, id, 330, 200, struc) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
 		bool alone = (n_avoid == 0 && n_align == 0 && n_attract > 0);
 
 		if (inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd) && alone == 0){
 			inds.lag[id] = 10;
-			feed(inds, id, quality, environment);
+			feed(inds, id, quality, environment, struc);
 		}
 		else if (inds.lag[id] == 0) {
 			inds.sample_rate[id] = inds.sample_rate[id] + 1;
@@ -542,16 +566,16 @@ void sample(Individuals& inds, int quality[][cols], Mat& environment) {
 	}
 }
 
-double get_speed(Individuals inds, int id) {
-	int count = in_zone(inds, id, 180, 200);
+double get_speed(Individuals inds, int id, Structure struc) {
+	int count = in_zone(inds, id, 180, 200, struc);
 	double speed_factor = 1 + 2 * count / num;
 	return speed_factor;
 }
 
-int sum_array(int quality[][cols]) {
+int sum_array(int quality[][n_cols], Structure struc) {
 	int sum = 0;
-	for (int i = 0; i < cols; i++) {
-		for (int u = 0; u < rows; u++) {
+	for (int i = 0; i < struc.cols; i++) {
+		for (int u = 0; u < struc.cols; u++) {
 			sum = sum + quality[u][i];
 		}
 	}
