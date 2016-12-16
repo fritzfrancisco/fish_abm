@@ -10,7 +10,7 @@
 #include <string>
 #include <map>
 #include <random>
-// #include <fstream>
+#include <fstream>
 
 #define PI 3.14159265
 #define num 60
@@ -74,8 +74,6 @@ double average_turn(vector<double> vec, bool comb_weight);
 double get_speed(Individuals inds, int id, Structure struc);
 
 int main() {
-	// ofstream sum_quality;
-
 	VideoWriter output_video;
 	output_video.open("fish_mod.avi", CV_FOURCC('M','P','4','2'), 30, Size(1920, 1080), true);
 	if (!output_video.isOpened()) {
@@ -84,7 +82,9 @@ int main() {
 	else {
 		cout << "video writer successfully initialized\n";
 	}
-	// sum_quality.open ("sum_quality.csv");
+
+	ofstream sum_quality;
+	sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
 
 	srand(time(0));
 
@@ -108,7 +108,7 @@ int main() {
 	cout << "2d quality array..\n";
 	create_environment(environment, quality, fish_struc);
 
-	// sum_quality << sum_array(quality) << ";\n";
+	sum_quality << endl << sum_array(quality, fish_struc) << ",";
 
 	cout << "starting simulation..\n";
 	for (int z = 0; z < 1000; z++) {
@@ -122,20 +122,17 @@ int main() {
 		fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 		drawfish(fish, fish_image);
 		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
-		imshow(fish_window, fish_environment);
+		// imshow(fish_window, fish_environment);
 
 		output_video.write(fish_environment);
 
-		// sum_quality << sum_array(quality) << ";\n";
+		sum_quality << sum_array(quality, fish_struc) << ",";
 
 		// waitKey(33);
 
 	}
-
+	sum_quality.close();
 	cout << "simulation complete\n";
-
-	// sum_quality.close();
-
 	return(0);
 }
 
@@ -509,6 +506,8 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 			environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
 		}
 	}
+
+	cout << ".. seeds successfully spread\n";
 }
 
 int get_quality(Individuals inds, int id, int quality[][n_cols], Structure struc) {
@@ -574,9 +573,9 @@ double get_speed(Individuals inds, int id, Structure struc) {
 
 int sum_array(int quality[][n_cols], Structure struc) {
 	int sum = 0;
-	for (int i = 0; i < struc.cols; i++) {
+	for (int i = 0; i < struc.rows; i++) {
 		for (int u = 0; u < struc.cols; u++) {
-			sum = sum + quality[u][i];
+			sum = sum + quality[i][u];
 		}
 	}
 	return sum;
