@@ -122,7 +122,7 @@ int main() {
 		fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 		drawfish(fish, fish_image);
 		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
-		// imshow(fish_window, fish_environment);
+		imshow(fish_window, fish_environment);
 
 		output_video.write(fish_environment);
 
