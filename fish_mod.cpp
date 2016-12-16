@@ -10,15 +10,15 @@
 #include <string>
 #include <map>
 #include <random>
-#include <fstream>
+// #include <fstream>
 
 #define PI 3.14159265
-#define num 20
+#define num 60
 
-#define latitude 12
-#define longitude 6
-#define resolution 10 // must be 100 > resolution > 1
-#define res_factor 10 // should be: res_factor * resolution = ~ 100
+#define latitude 30
+#define longitude 15
+#define resolution 4 // must be 100 > resolution > 1
+#define res_factor 25 // should be: res_factor * resolution = ~ 100
 
 #define w (latitude * resolution * res_factor)
 #define h (longitude * resolution * res_factor)
@@ -33,8 +33,8 @@ uniform_int_distribution<int> distrib_choice(0, 1);
 uniform_int_distribution<int> distrib_error(-10, 10);
 uniform_int_distribution<int> distrib_rwalk(-45, 45);
 uniform_int_distribution<int> distrib_quality(0, 10);
-uniform_int_distribution<int>distrib_seed(25,50);
-uniform_int_distribution<int>distrib_sample(20,100);
+uniform_int_distribution<int>distrib_seed(80, 80);
+uniform_int_distribution<int>distrib_sample(40, 100);
 
 class Individuals {
 	public:
@@ -44,7 +44,7 @@ class Individuals {
 		int n;
 		int dim;
 		double speed[num]; // movement speed
-		bool sample[num];
+		double speed_factor[num];
 		int sample_rate[num];
 		int lag[num];
 };
@@ -59,14 +59,28 @@ void sample(Individuals& inds, int quality[][cols], Mat& environment);
 
 int in_zone(Individuals inds, int id, int fov, double r); // fov: field of view
 int get_quality(Individuals inds, int id, int quality[][cols]);
+int sum_array(int quality[][cols]);
 
 double collision(Individuals inds, int id, double newdir);
 double correct_angle(double dir);
 double get_angle(double* focal_coords, double focal_dir, double* pos);
 double social(Individuals inds, int id, int fov);
 double average_turn(vector<double> vec, bool comb_weight);
+double get_speed(Individuals inds, int id);
 
 int main() {
+	// ofstream sum_quality;
+
+	VideoWriter output_video;
+	output_video.open("fish_mod.avi", CV_FOURCC('M','P','4','2'), 30, Size(1920, 1080), true);
+	if (!output_video.isOpened()) {
+		cout << "video writer not initialized\n";
+	}
+	else {
+		cout << "video writer successfully initialized\n";
+	}
+	// sum_quality.open ("sum_quality.csv");
+
 	srand(time(0));
 
 	char fish_window[] = "Fish";
@@ -85,7 +99,9 @@ int main() {
 	// initializes object fish of class Individuals with num individuals, dimensions, speed, dspeed, nfollow
 	initialize(fish, num, 2, 5);
 
-	for (int z = 0; z < 2000; z++) {
+	// sum_quality << sum_array(quality) << ";\n";
+
+	for (int z = 0; z < 1000; z++) {
 
 		sample(fish, quality, environment);
 		move(fish, quality);
@@ -94,9 +110,16 @@ int main() {
 		drawfish(fish, fish_image);
 		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
 		imshow(fish_window, fish_environment);
-		waitKey( 33 );
+
+		output_video.write(fish_environment);
+
+		// sum_quality << sum_array(quality) << ";\n";
+
+		waitKey(33);
 
 	}
+
+	// sum_quality.close();
 	return(0);
 }
 
@@ -110,8 +133,10 @@ void move(Individuals& inds, int quality[][cols]) {
 
 			dir = dir + turn;
 
-			inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * PI / 180) * inds.sample[id];
-			inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * PI / 180) * inds.sample[id];
+			inds.speed_factor[id] = get_speed(inds, id);
+
+			inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * PI / 180) * inds.speed_factor[id];
+			inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * PI / 180) * inds.speed_factor[id];
 			correct_coords(inds.coords[id]);
 
 			inds.dir[id] = dir;
@@ -129,9 +154,9 @@ void initialize(Individuals& inds, int n, int dim, double speed) {
 		inds.color[i][0] = 120 + rand() % 120;
 		inds.color[i][1] = 120 + rand() % 120;
 		inds.color[i][2] = 120 + rand() % 120;
-		inds.dir[i] = rand() % 360; // direction
+		inds.dir[i] = distrib_rwalk(rd); // direction
 		inds.speed[i] = speed;
-		inds.sample[i] = 1;
+		inds.speed_factor[i] = 1;
 		inds.sample_rate[i] = 100;
 		inds.lag[i] = 0; // 17 equals half a second
 		for (int u = 0; u < inds.dim; u++) {
@@ -163,7 +188,7 @@ void drawfish(Individuals inds, Mat image) {
 }
 
 int in_zone(Individuals inds, int id, int fov, double r) {
-	int c =  0; // count num of inds in front of id
+	int c = 0; // count num of inds in front of id
 	double dirvector[2]; // direction vector (fish id) of lenth 1
 	dirvector[0] = cos(inds.dir[id] * PI / 180);
 	dirvector[1] = sin(inds.dir[id] * PI / 180);
@@ -435,11 +460,11 @@ void create_environment(Mat& environment, int quality[][cols]) {
 	  	}
 	}
 
-    for(int p = 0; p < 8; p++){
+    for(int p = 0; p < 20; p++){
 		for(int u = 0; u < rows; u++){
 			for(int i = 0; i < cols; i++){
 				if (u < rows - 1 && i < cols - 1) {
-					if(quality[u + 1][i] > 5 || quality[u + 1][i + 1]  > 5 || quality[u][i + 1] > 5){
+					if(quality[u + 1][i] > p || quality[u + 1][i + 1]  > p || quality[u][i + 1] > p){
 						quality[u][i] = distrib_quality(rd);
 					}
 				}
@@ -498,19 +523,37 @@ void feed(Individuals& inds, int id, int quality[][cols], Mat& environment) {
 
 void sample(Individuals& inds, int quality[][cols], Mat& environment) {
 	for (int id = 0; id < inds.n; id++) {
-		if (inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd)){
-			inds.sample[id] = 0;
-			inds.lag[id] = 5;
+		int n_avoid = in_zone(inds, id, 330, 15); // number of individals to avoid. [id,dist,angle,angle to neighbor]
+		int n_align = in_zone(inds, id, 330, 100) - n_avoid; // number of individals to align to [id,dist,angle between directions]
+		int n_attract = in_zone(inds, id, 330, 200) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
+		bool alone = (n_avoid == 0 && n_align == 0 && n_attract > 0);
+
+		if (inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd) && alone == 0){
+			inds.lag[id] = 10;
 			feed(inds, id, quality, environment);
 		}
 		else if (inds.lag[id] == 0) {
-			inds.sample[id] = 1;
 			inds.sample_rate[id] = inds.sample_rate[id] + 1;
 		}
 		else {
 			inds.lag[id] = inds.lag[id] - 1;
-			inds.sample[id] = 1;
 			inds.sample_rate[id] = inds.sample_rate[id] + 1;
 		}
 	}
+}
+
+double get_speed(Individuals inds, int id) {
+	int count = in_zone(inds, id, 180, 200);
+	double speed_factor = 1 + 2 * count / num;
+	return speed_factor;
+}
+
+int sum_array(int quality[][cols]) {
+	int sum = 0;
+	for (int i = 0; i < cols; i++) {
+		for (int u = 0; u < rows; u++) {
+			sum = sum + quality[u][i];
+		}
+	}
+	return sum;
 }
