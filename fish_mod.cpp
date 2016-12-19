@@ -59,6 +59,7 @@ void initialize(Individuals& inds, int n, int dim, double speed, Structure struc
 void correct_coords(double* coords, Structure struc);
 void drawfish(Individuals inds, Mat image);
 void create_environment(Mat& environment, int quality[][n_cols], Structure struc);
+void get_environment(Mat& environment, int quality[][n_cols], Structure struc);
 void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, Structure struc);
 void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structure struc);
 
@@ -106,7 +107,7 @@ int main() {
 	int quality[n_rows][n_cols];
 
 	cout << "2d quality array..\n";
-	create_environment(environment, quality, fish_struc);
+	get_environment(environment, quality, fish_struc);
 
 	sum_quality << endl << sum_array(quality, fish_struc) << ",";
 
@@ -459,7 +460,7 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 
 	cout << ".. number of seeds: " << seed << "\n";
 
-    for (int u = 0; u < struc.rows; u++) {
+  for (int u = 0; u < struc.rows; u++) {
 		for (int i =0; i < struc.cols; i++) {
 			quality[u][i] = 0;
 		}
@@ -467,7 +468,7 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 
 	cout << ".. array initialized with zeros\n";
 
-    if(seed > 0){
+  if(seed > 0){
 	    int seed_coords[seed][2];
 	    uniform_int_distribution<int>distrib_rows(0,struc.rows);
 	    uniform_int_distribution<int>distrib_cols(0,struc.cols);
@@ -481,7 +482,7 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 
 	cout << ".. seed coordinates initialized\n";
 
-    for(int p = 0; p < 20; p++){
+  for(int p = 0; p < 20; p++){
 		for(int u = 0; u < struc.rows; u++){
 			for(int i = 0; i < struc.cols; i++){
 				if (u < struc.rows - 1 && i < struc.cols - 1) {
@@ -579,4 +580,45 @@ int sum_array(int quality[][n_cols], Structure struc) {
 		}
 	}
 	return sum;
+}
+
+void get_environment(Mat& environment, int quality[][n_cols], Structure struc) {
+	using namespace std;
+
+	ifstream in("quality.csv");
+
+	string line, field;
+
+	vector< vector<string> > array;  // the 2D array
+	vector<string> v;                // array of values for one line only
+
+	while ( getline(in,line) )    // get next line in file
+	{
+        v.clear();
+        stringstream ss(line);
+
+        while (getline(ss,field,','))  // break line into comma delimitted fields
+        {
+            v.push_back(field);  // add each field to the 1D array
+        }
+
+        array.push_back(v);  // add the 1D array to the 2D array
+    }
+
+    // print out what was read in
+
+    for (size_t i=0; i<array.size(); ++i)
+    {
+        for (size_t j=0; j<array[i].size(); ++j)
+        {
+            quality[i][j] = stoi(array[i][j]); // (separate fields by |) -> write into quality
+        }
+    }
+
+		for (int y = 0; y < struc.h; y++) {
+			for (int x = 0; x < struc.w; x++) {
+				int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
+				environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
+			}
+		}
 }
