@@ -1,7 +1,10 @@
 ## fish abm
 Agent based model for simulating movement of fish schools
-
 All visualization was done using OpenCV2 v. 2.4.13 in C++.
+
+<img src="https://github.com/fritzfrancisco/fish_abm/blob/workingbranch/screenshot_abm.png" width="500">
+
+Image 1: First visualization of the agent based model
 
 ### `int main():`
 
@@ -51,11 +54,6 @@ All visualization was done using OpenCV2 v. 2.4.13 in C++.
   #### `double get_speed():`
 
   - the `speed_factor` [default=1] is calculated using the individuals in the front visual field (the number of individuals in front (-90,+90 degrees from head tail axis)) and the response radius of 100: speed_factor = 1 + ind_count divided by N/2 (N: Total Population). The more individuals are perceived ahead, the faster the individual will travel.
-
-
-  <img src="https://github.com/fritzfrancisco/fish_abm/blob/workingbranch/screenshot_abm.png" width="500">
-
-  Image 1: First visualization of the agent based model
 
   <img src="https://github.com/fritzfrancisco/fish_abm/blob/workingbranch/Social%20heat%20map.png" width="300">
 
