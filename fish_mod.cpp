@@ -91,9 +91,9 @@ int main() {
 	}
 
 	// ofstream sum_quality;
-  // ofstream ind_quality;
-  // sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
-  // ind_quality.open("ind_quality.csv", fstream::in | fstream::out | fstream::app);
+	// ofstream ind_quality;
+	// sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
+	// ind_quality.open("ind_quality.csv", fstream::in | fstream::out | fstream::app);
 
 	srand(time(0)); //only used in initialize function
 
@@ -160,7 +160,7 @@ int main() {
 	}
 
 	// sum_quality.close();
-  // ind_quality.close();
+	// ind_quality.close();
 
 	cout << "simulation complete\n";
 	return(0);
