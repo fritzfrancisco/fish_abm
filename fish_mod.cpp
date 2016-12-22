@@ -21,7 +21,7 @@ using namespace std;
 using namespace cv;
 
 #define num 60
-#define n_cols 250// must be Structure.latitude * Structure.resolution
+#define n_cols 250 // must be Structure.latitude * Structure.resolution
 #define n_rows 250 // must be Structure.longitude * Structure.resolution
 
 random_device rd;
@@ -29,7 +29,7 @@ uniform_int_distribution<int>distrib_choice(0,1);
 uniform_int_distribution<int>distrib_error(-10,10);
 uniform_int_distribution<int>distrib_randomwalk(-45,45);
 uniform_int_distribution<int>distrib_quality(0,10);
-uniform_int_distribution<int>distrib_seed(0,10);
+uniform_int_distribution<int>distrib_seed(0,0);
 uniform_int_distribution<int>distrib_sample(0,35);
 
 class individuals {
@@ -73,7 +73,7 @@ void create_environment(Mat& environment,int quality[][n_cols], Structure struc)
 void feed(individuals& inds,int id, int quality[][n_cols],Mat& environment,Structure struc);
 void sample(individuals& inds, int quality[][n_cols], Mat& environment,Structure struc);
 void get_environment(Mat& environment, int quality[][n_cols], Structure struc);
-void get_speed(individuals inds,int id,Structure struc);
+void get_speed(individuals& inds,int id,Structure struc);
 
 double correctangle(double dir);
 double social(individuals inds,int id,int fov,Structure struc);
@@ -97,7 +97,7 @@ int main(){
         // ofstream sum_quality;
         // ofstream ind_quality;
         // sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
-        // sum_quality.open("ind_quality.csv", fstream::in | fstream::out | fstream::app);
+        // ind_quality.open("ind_quality.csv", fstream::in | fstream::out | fstream::app);
 
         srand(time(0));
 
@@ -105,9 +105,8 @@ int main(){
         cout << "environment structure object initialized\n";
         // Creating window for imaging
         char fish_window[] = "Fish";
-        // Create "food" environment
-        char env_window[] = "Environment";
         // Create matrices
+        // Create "food" environment
         Mat fish_image = Mat::zeros(fish_struc.h,fish_struc.w,CV_8UC3);
         Mat environment = Mat::zeros(fish_struc.h,fish_struc.w,CV_8UC3);
         Mat fishinenvironment;
@@ -119,44 +118,42 @@ int main(){
         // Establish mixed pattern of environment with quality[h]x[w] squares
         int quality[n_rows][n_cols];
         cout << "2d quality array..\n";
-        create_environment(environment,quality,fish_struc);
+        get_environment(environment,quality,fish_struc);
 
         // sum_quality << sum_array(quality) << ",";
         // sum_quality << "\n";
         cout << "starting simulation..\n";
-        for(int z = 0; z < 100; z++) {
+        for(int z = 0; z < 500; z++) {
                 if (z % 100 == 0) {
-                                cout << ".. step: " << z << "\n";
-                              }
-                              move(fish,fish_struc);
-                              sample(fish,quality,environment,fish_struc);
-                              // if(z % 10 == 0) {
-                              //                 for(int id = 0; id < fish.n; id++) {
-                              //                                 if(id < (fish.n-1)) {
-                              //                                                 sum_quality << fish.food_intake[id] << ",";
-                              //                                 }
-                              //                                 else{
-                              //                                                 sum_quality << fish.food_intake[id] << endl;
-                              //                                 }
-                              //                 }
-                              // }
-                              fish_image = Mat::zeros(fish_struc.h,fish_struc.w,CV_8UC3);
-                              drawfish(fish,fish_image);
-                              addWeighted(fish_image,1,environment,0.1,10,fishinenvironment);
-                              // imshow(fish_window,fishinenvironment);
+                        cout << ".. step: " << z << "\n";
+                }
+                move(fish,fish_struc);
+                sample(fish,quality,environment,fish_struc);
+                // if(z % 10 == 0) {
+                //                 for(int id = 0; id < fish.n; id++) {
+                //                                 if(id < (fish.n-1)) {
+                //                                                 sum_quality << fish.food_intake[id] << ",";
+                //                                 }
+                //                                 else{
+                //                                                 sum_quality << fish.food_intake[id] << endl;
+                //                                 }
+                //                 }
+                // }
+                fish_image = Mat::zeros(fish_struc.h,fish_struc.w,CV_8UC3);
+                drawfish(fish,fish_image);
+                addWeighted(fish_image,1,environment,0.1,0.0,fishinenvironment);
+                // imshow(fish_window,fishinenvironment);
 
-                              // sum_quality << sum_array(quality) << ",";
+                output_video.write(fishinenvironment);
 
-                              output_video.write(fishinenvironment);
-
-                              // if(z < 1999){
-                              // 	sum_quality << sum_array(quality, fish_struc) << ",";
-                              // }
-                              // else{
-                              // 	sum_quality << sum_array(quality, fish_struc) << endl;
-                              // }
-                              // waitKey(30);
-                            }
+                // if(z < 1999){
+                //  sum_quality << sum_array(quality, fish_struc) << ",";
+                // }
+                // else{
+                //  sum_quality << sum_array(quality, fish_struc) << endl;
+                // }
+                // waitKey(30);
+        }
         // sum_quality.close();
         // ind_quality.close();
         cout << "simulation complete\n";
@@ -171,7 +168,7 @@ void move(individuals& inds,Structure struc){
 
                         dir = dir + turn;
 
-                        inds.coords[id][0] =  inds.coords[id][0] + inds.speed[id] * cos(dir * M_PI / 180) * inds.speed_factor[id];
+                        inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * M_PI / 180) * inds.speed_factor[id];
                         inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * M_PI/ 180) * inds.speed_factor[id];
                         get_speed(inds, id, struc);
                         correct_coords(inds.coords[id],struc);
@@ -223,7 +220,7 @@ void drawfish(individuals inds, Mat fish_image){
                 // sprintf(angle,"%g",inds.dir[i]);
                 // putText(fish_image,angle,center,1,1,fishcol,1,8);
                 arrowedLine(fish_image,tail,head,fishcol,1,CV_AA,0,0.2); // draw fish
-           }
+        }
 }
 
 int in_zone(individuals inds,int id,int fov,double r,Structure struc){
@@ -268,7 +265,6 @@ double social(individuals inds, int id, int fov,Structure struc){
         dirvector[1] = sin(inds.dir[id] * M_PI / 180);
 
         int socialfactor = 2; // switch for behavior: 0 = avoidance, 1 = alignment, 2 = attraction
-        int c = in_zone(inds, id, fov, 200,struc); // counter for fish in visual radius
 
         int c_avoid = 0; // counter to initialize array
         int c_attract = 0;
@@ -528,7 +524,7 @@ void create_environment(Mat& environment,int quality[][n_cols],Structure struc){
                 for(int y = 0; y < struc.h; y++) {
                         int q_color = quality[y/(struc.h/struc.rows)][x/(struc.w/struc.cols)];
                         // colour depends on maximum quality: 255/maximum quality
-                        environment.at<Vec3b>(y,x)= Vec3b(q_color*(255/10),q_color*(255/10),q_color*(255/10));
+                        environment.at<Vec3b>(y,x)= Vec3b(q_color*(255/2),q_color*(255/2),q_color*(255/2));
                 }
         }
         cout << ".. seeds successfully spread\n";
@@ -548,10 +544,6 @@ void sample(individuals& inds, int quality[][n_cols], Mat& environment,Structure
                 int n_align = in_zone(inds, id, 330, 100,struc) - n_avoid; // number of individals to align to [id,dist,angle between directions]
                 int n_attract = in_zone(inds, id, 330, 200,struc) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
                 bool alone = (n_avoid == 0 && n_align < 5);
-                // avoid being left behind.lag decreases with increasing distance to group
-                // if(n_avoid == 0 && n_align == 0 && inds.lag[id] > 0 && n_attract > 0) {
-                //         inds.lag[id] = inds.lag[id] - 1;
-                // }
                 if(inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd) && alone == 0) {
                         inds.lag[id] = 10;
                         feed(inds,id,quality,environment,struc);
@@ -590,12 +582,12 @@ void feed(individuals& inds,int id, int quality[][n_cols],Mat& environment,Struc
         int x_max = x_min + (struc.w/struc.cols);
         // draw environment boxes as filled rectangles (255/max. quality)
         // color dependent on maximum quality: 255/maximum quality
-        rectangle(environment,Point(x_min,y_min),Point(x_max-1,y_max-1),Scalar(q*(255/10),q*(255/10),q*(255/10)),-1,8,0);
+        rectangle(environment,Point(x_min,y_min),Point(x_max-1,y_max-1),Scalar(q*(255/2),q*(255/2),q*(255/2)),-1,8,0);
 }
 
-void get_speed(individuals inds,int id,Structure struc){
+void get_speed(individuals& inds,int id,Structure struc){
         int count = in_zone(inds,id,180,200,struc);
-        inds.speed_factor[id] = 1 + 2 * (double)count/(double)num;
+        inds.speed_factor[id] = 1 + 2 * (double) count / (double) num;
 }
 
 int sum_array(int quality[][n_cols],Structure struc){
@@ -609,42 +601,37 @@ int sum_array(int quality[][n_cols],Structure struc){
 }
 
 void get_environment(Mat& environment, int quality[][n_cols], Structure struc) {
-								using namespace std;
+        ifstream in("quality.csv");
 
-								ifstream in("quality.csv");
+        string line, field;
 
-								string line, field;
+        vector< vector<string> > array;   // the 2D array
+        vector<string> v;                 // array of values for one line only
 
-								vector< vector<string> > array; // the 2D array
-								vector<string> v;         // array of values for one line only
+        while ( getline(in,line) )        // get next line in file
+        {
+        v.clear();
+        stringstream ss(line);
 
-								while ( getline(in,line) ) // get next line in file
-								{
-								v.clear();
-								stringstream ss(line);
+        while (getline(ss,field,','))     // break line into comma delimitted fields
+        {
+                v.push_back(field);       // add each field to the 1D array
+        }
+        array.push_back(v);               // add the 1D array to the 2D array
+        }
 
-								while (getline(ss,field,','))  // break line into comma delimitted fields
-								{
-																v.push_back(field); // add each field to the 1D array
-								}
+        for (size_t i=0; i<array.size(); ++i)
+        {
+                for (size_t j=0; j<array[i].size(); ++j)
+                {
+                        quality[i][j] = stoi(array[i][j]);                         // (separate fields by |) -> write into quality
+                }
+        }
 
-								array.push_back(v);  // add the 1D array to the 2D array
-								}
-
-								// print out what was read in
-
-								for (size_t i=0; i<array.size(); ++i)
-								{
-																for (size_t j=0; j<array[i].size(); ++j)
-																{
-																								quality[i][j] = stoi(array[i][j]); // (separate fields by |) -> write into quality
-																}
-								}
-
-								for (int y = 0; y < struc.h; y++) {
-								        for (int x = 0; x < struc.w; x++) {
-								                int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
-								                environment.at<Vec3b>(y, x) = Vec3b(q * (255/10), q * (255/10), q * (255/10));
-								        }
-								}
+        for (int y = 0; y < struc.h; y++) {
+                for (int x = 0; x < struc.w; x++) {
+                        int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
+                        environment.at<Vec3b>(y, x) = Vec3b(q * (255/2), q * (255/2), q * (255/2));
+                }
+        }
 }
