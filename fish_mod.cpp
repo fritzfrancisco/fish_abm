@@ -77,8 +77,12 @@ double social(Individuals inds, int id, int fov, Structure struc);
 double average_turn(vector<double> vec, bool comb_weight);
 
 int main() {
+	cout << "Created using: OpenCV version 2.4.13" << endl;
+	cout << "Currently using: " << "OpenCV version : " << CV_VERSION << "\n";
+	cout << "-------------------------------------------" << endl;
 	VideoWriter output_video;
 	output_video.open("fish_mod.avi", CV_FOURCC('M','P','4','2'), 30, Size(2000, 2000), true);
+
 	if (!output_video.isOpened()) {
 		cout << "video writer not initialized\n";
 	}
@@ -86,35 +90,34 @@ int main() {
 		cout << "video writer successfully initialized\n";
 	}
 
-	ofstream sum_quality;
-	sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
+	// ofstream sum_quality;
+  // ofstream ind_quality;
+  // sum_quality.open("sum_quality.csv", fstream::in | fstream::out | fstream::app);
+  // ind_quality.open("ind_quality.csv", fstream::in | fstream::out | fstream::app);
 
-	srand(time(0));
+	srand(time(0)); //only used in initialize function
 
 	Structure fish_struc;
-
 	cout << "environment structure object initialized\n";
+
 	Individuals fish;
 	// initializes object fish of class Individuals with num individuals, dimensions, speed and initializes structure
 	initialize(fish, num, 2, 5, fish_struc);
-
 	cout << "fish individuals object initialized\n";
 
-	char fish_window[] = "Fish";
-	char environment_window[] = "Environment";
+	char fish_window[] = "Fish"; // create window for visulization
 	Mat fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 	Mat environment = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 	Mat fish_environment;
 
 	int quality[n_rows][n_cols];
-
-	cout << "2d quality array..\n";
 	// create_environment(environment, quality, fish_struc);
 	get_environment(environment, quality, fish_struc);
-
-	sum_quality << endl << sum_array(quality, fish_struc) << ",";
+	cout << "2d quality array initialized/read from file\n";
 
 	cout << "starting simulation..\n";
+	// sum_quality << endl << sum_array(quality, fish_struc) << ",";
+
 	for (int z = 0; z < 800; z++) {
 		if (z % 100 == 0) {
 			cout << ".. step: " << z << "\n";
@@ -123,19 +126,42 @@ int main() {
 		move(fish, fish_struc);
 		sample(fish, quality, environment, fish_struc);
 
+		// output for individual food uptake
+		// if(z % 10 == 0) {
+		// 	for(int id = 0; id < fish.n; id++) {
+		// 		if(id < (fish.n-1)) {
+		// 			ind_quality << fish.food_intake[id] << ",";
+		// 		}
+		// 		else{
+		// 			ind_quality << fish.food_intake[id] << endl;
+		// 		}
+		// 	}
+		// }
+
+		// output for overall quality depletion
+		// if(z < 1999){
+		// 	sum_quality << sum_array(quality, fish_struc) << ",";
+		// }
+		// else{
+		// 	sum_quality << sum_array(quality, fish_struc) << endl;
+		// }
+
 		fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 		drawfish(fish, fish_image);
 		addWeighted(fish_image, 1, environment, 0.1, 0.0, fish_environment);
+
 		// imshow(fish_window, fish_environment);
 
+		// output for simulation video
 		output_video.write(fish_environment);
-
-		sum_quality << sum_array(quality, fish_struc) << ",";
 
 		// waitKey( 33 );
 
 	}
-	sum_quality.close();
+
+	// sum_quality.close();
+  // ind_quality.close();
+
 	cout << "simulation complete\n";
 	return(0);
 }
@@ -145,8 +171,7 @@ void move(Individuals& inds, Structure struc) {
 		if (inds.lag[id] == 0) {
 			double dir = correct_angle(inds.dir[id]);
 
-			double small_error = distrib_error(rd);
-			double turn = social(inds, id, 330, struc) + small_error;
+			double turn = social(inds, id, 330, struc) + distrib_error(rd);
 
 			dir = dir + turn;
 
@@ -576,7 +601,6 @@ void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structur
 		}
 		else {
 			inds.lag[id] = inds.lag[id] - 1;
-			// inds.sample_rate[id] = inds.sample_rate[id] + 1;
 		}
 	}
 }
@@ -597,42 +621,33 @@ int sum_array(int quality[][n_cols], Structure struc) {
 }
 
 void get_environment(Mat& environment, int quality[][n_cols], Structure struc) {
-	using namespace std;
-
 	ifstream in("quality.csv");
-
 	string line, field;
 
 	vector< vector<string> > array;  // the 2D array
 	vector<string> v;                // array of values for one line only
 
-	while ( getline(in,line) )    // get next line in file
-	{
-        v.clear();
-        stringstream ss(line);
-
-        while (getline(ss,field,','))  // break line into comma delimitted fields
-        {
-            v.push_back(field);  // add each field to the 1D array
-        }
-
-        array.push_back(v);  // add the 1D array to the 2D array
+	while (getline(in,line)) {   // get next line in file
+		v.clear();
+		stringstream ss(line);
+    while (getline(ss,field,',')) { // break line into comma delimitted fields
+        v.push_back(field);  // add each field to the 1D array
     }
+		array.push_back(v);  // add the 1D array to the 2D array
+  }
 
-    // print out what was read in
+  // print out what was read in
 
-    for (size_t i=0; i<array.size(); ++i)
-    {
-        for (size_t j=0; j<array[i].size(); ++j)
-        {
-            quality[i][j] = stoi(array[i][j]); // (separate fields by |) -> write into quality
-        }
-    }
-
-		for (int y = 0; y < struc.h; y++) {
-			for (int x = 0; x < struc.w; x++) {
-				int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
-				environment.at<Vec3b>(y, x) = Vec3b(q * (225/2), q * (225/2), q * (225/2));
-			}
+  for (size_t i=0; i<array.size(); ++i) {
+		for (size_t j=0; j<array[i].size(); ++j) {
+			quality[i][j] = stoi(array[i][j]); // (separate fields by |) -> write into quality
 		}
+	}
+
+	for (int y = 0; y < struc.h; y++) {
+		for (int x = 0; x < struc.w; x++) {
+			int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
+			environment.at<Vec3b>(y, x) = Vec3b(q * (225/2), q * (225/2), q * (225/2));
+		}
+	}
 }
