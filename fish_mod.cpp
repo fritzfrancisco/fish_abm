@@ -14,8 +14,8 @@
 
 #define PI 3.14159265
 #define num 60
-#define n_cols 96 // must be Structure.longitude * resolution
-#define n_rows 54 // must be Structure.latitude * resolution
+#define n_cols 250 // must be Structure.longitude * resolution
+#define n_rows 250 // must be Structure.latitude * resolution
 
 using namespace std;
 using namespace cv;
@@ -25,8 +25,8 @@ uniform_int_distribution<int> distrib_choice(0, 1);
 uniform_int_distribution<int> distrib_error(-10, 10);
 uniform_int_distribution<int> distrib_rwalk(-45, 45);
 uniform_int_distribution<int> distrib_quality(0, 10);
-uniform_int_distribution<int>distrib_seed(20, 20);
-uniform_int_distribution<int>distrib_sample(40, 100);
+uniform_int_distribution<int>distrib_seed(0, 0);
+uniform_int_distribution<int>distrib_sample(0, 35);
 
 class Individuals {
 	public:
@@ -39,13 +39,14 @@ class Individuals {
 		double speed_factor[num];
 		int sample_rate[num];
 		int lag[num];
+		int food_intake[num];
 };
 
 class Structure {
 	public:
-		int latitude = 48;
-		int longitude = 27;
-		int resolution = 2; // must be 100 > resolution > 1
+		int latitude = 100;
+		int longitude = 100;
+		int resolution = 1; // must be 100 > resolution > 1
 		int res_factor = 20; // should be: res_factor * resolution = ~ 100
 
 		int w = latitude * resolution * res_factor;
@@ -62,6 +63,8 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 void get_environment(Mat& environment, int quality[][n_cols], Structure struc);
 void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, Structure struc);
 void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structure struc);
+void get_speed(Individuals& inds, int id, Structure struc);
+
 
 int in_zone(Individuals inds, int id, int fov, double r, Structure struc); // fov: field of view
 int get_quality(Individuals inds, int id, int quality[][n_cols], Structure struc);
@@ -72,11 +75,10 @@ double correct_angle(double dir);
 double get_angle(double* focal_coords, double focal_dir, double* pos, Structure struc);
 double social(Individuals inds, int id, int fov, Structure struc);
 double average_turn(vector<double> vec, bool comb_weight);
-double get_speed(Individuals inds, int id, Structure struc);
 
 int main() {
 	VideoWriter output_video;
-	output_video.open("fish_mod.avi", CV_FOURCC('M','P','4','2'), 30, Size(1920, 1080), true);
+	output_video.open("fish_mod.avi", CV_FOURCC('M','P','4','2'), 30, Size(2000, 2000), true);
 	if (!output_video.isOpened()) {
 		cout << "video writer not initialized\n";
 	}
@@ -107,18 +109,19 @@ int main() {
 	int quality[n_rows][n_cols];
 
 	cout << "2d quality array..\n";
+	// create_environment(environment, quality, fish_struc);
 	get_environment(environment, quality, fish_struc);
 
 	sum_quality << endl << sum_array(quality, fish_struc) << ",";
 
 	cout << "starting simulation..\n";
-	for (int z = 0; z < 1000; z++) {
+	for (int z = 0; z < 800; z++) {
 		if (z % 100 == 0) {
 			cout << ".. step: " << z << "\n";
 		}
 
-		sample(fish, quality, environment, fish_struc);
 		move(fish, fish_struc);
+		sample(fish, quality, environment, fish_struc);
 
 		fish_image = Mat::zeros(fish_struc.h, fish_struc.w, CV_8UC3);
 		drawfish(fish, fish_image);
@@ -129,7 +132,7 @@ int main() {
 
 		sum_quality << sum_array(quality, fish_struc) << ",";
 
-		// waitKey(33);
+		// waitKey( 33 );
 
 	}
 	sum_quality.close();
@@ -147,11 +150,9 @@ void move(Individuals& inds, Structure struc) {
 
 			dir = dir + turn;
 
-			inds.speed_factor[id] = get_speed(inds, id, struc);
-
 			inds.coords[id][0] = inds.coords[id][0] + inds.speed[id] * cos(dir * PI / 180) * inds.speed_factor[id];
 			inds.coords[id][1] = inds.coords[id][1] + inds.speed[id] * sin(dir * PI / 180) * inds.speed_factor[id];
-
+			get_speed(inds, id, struc);
 			correct_coords(inds.coords[id], struc);
 
 			inds.dir[id] = dir;
@@ -172,7 +173,8 @@ void initialize(Individuals& inds, int n, int dim, double speed, Structure struc
 		inds.dir[i] = distrib_rwalk(rd); // direction
 		inds.speed[i] = speed;
 		inds.speed_factor[i] = 1;
-		inds.sample_rate[i] = 100;
+		inds.sample_rate[i] = 0;
+		inds.food_intake[i] = 0;
 		inds.lag[i] = 0; // 17 equals half a second
 		for (int u = 0; u < inds.dim; u++) {
 			if (u == 0) {
@@ -191,14 +193,21 @@ void drawfish(Individuals inds, Mat image) {
 		Point center(inds.coords[i][0], inds.coords[i][1]);
 		Point tail(inds.coords[i][0] - 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] - 10 * sin(inds.dir[i] * PI / 180));
 		Point head(inds.coords[i][0] + 10 * cos(inds.dir[i] * PI / 180), inds.coords[i][1] + 10 * sin(inds.dir[i] * PI / 180));
+		Point left(inds.coords[i][0] + 200 * cos((inds.dir[i] - 165) * PI / 180), inds.coords[i][1] + 200 * sin((inds.dir[i] - 165) * PI / 180));
+		Point right(inds.coords[i][0] + 200 * cos((inds.dir[i] + 165) * PI / 180), inds.coords[i][1] + 200 * sin((inds.dir[i] + 165) * PI / 180));
 		circle(image, center, 2, fishcolor, 1, CV_AA, 0);
-		// circle(image, center, 30, fishcolor, 1, CV_AA, 0);
-		// circle(image, center, 200, fishcolor, 1, CV_AA, 0);
-		// circle(image, center, 100, fishcolor, 1, CV_AA, 0);
+		// Size r1(15, 15);
+		// Size r2(100, 100);
+		// Size r3(200, 200);
+		// ellipse(image, center, r1, inds.dir[i], 0, 165, fishcolor, 1, CV_AA, 0);
+		// ellipse(image, center, r1, inds.dir[i], 360, 195, fishcolor, 1, CV_AA, 0);
+		// ellipse(image, center, r2, inds.dir[i], 0, 165, fishcolor, 1, CV_AA, 0);
+		// ellipse(image, center, r2, inds.dir[i], 360, 195, fishcolor, 1, CV_AA, 0);
+		// ellipse(image, center, r3, inds.dir[i], 0, 165, fishcolor, 1, CV_AA, 0);
+		// ellipse(image, center, r3, inds.dir[i], 360, 195, fishcolor, 1, CV_AA, 0);
 		arrowedLine(image, tail, head, fishcolor, 1, CV_AA, 0, 0.2);
-		// char angle[10];
-		// sprintf(angle, "%g", inds.dir[i]);
-		// putText(image, angle, head, 1, 1, fishcolor, 1, CV_AA, false );
+		// line(image, center, left, fishcolor, 1, CV_AA, 0);
+		// line(image, center, right, fishcolor, 1, CV_AA, 0);
 	}
 }
 
@@ -360,8 +369,8 @@ double average_turn(vector<double> vec, bool comb_weight) {
 	double y_sum = 0;
 	for (int i = 0; i < vec.size(); i++) {
 		if (comb_weight) {
-			x_sum = x_sum + cos(vec.at(i) * PI / 180) * (1.2 - i);
-			y_sum = y_sum + sin(vec.at(i) * PI / 180) * (1.2 - i);
+			x_sum = x_sum + cos(vec.at(i) * PI / 180) * (1.7 - i);
+			y_sum = y_sum + sin(vec.at(i) * PI / 180) * (1.7 - i);
 		}
 		else {
 			x_sum = x_sum + cos(vec.at(i) * PI / 180);
@@ -504,7 +513,7 @@ void create_environment(Mat& environment, int quality[][n_cols], Structure struc
 	for (int y = 0; y < struc.h; y++) {
 		for (int x = 0; x < struc.w; x++) {
 			int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
-			environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
+			environment.at<Vec3b>(y, x) = Vec3b(q * (255/2), q * (255/2), q * (255/2));
 		}
 	}
 
@@ -524,11 +533,16 @@ void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, St
 	int y = inds.coords[id][1];
 
 	int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
-	inds.sample_rate[id] = 10 * q;
 
 	if (q > 0) {
+		inds.speed_factor[id] = 0.5;
 		quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)] = q - 1;
 		q = q - 1;
+		inds.food_intake[id] = inds.food_intake[id] + 1;
+		inds.sample_rate[id] = 30;
+	}
+	else {
+		inds.sample_rate[id] = 0;
 	}
 
 	int y_min = y / (struc.h / struc.rows);
@@ -541,7 +555,7 @@ void feed(Individuals& inds, int id, int quality[][n_cols], Mat& environment, St
 
 	Point pt_min(x_min, y_min);
 	Point pt_max(x_max, y_max);
-	Scalar q_color(q * (255 / 10), q * (255 / 10), q * (255 / 10));
+	Scalar q_color(q * (255 / 2), q * (255 / 2), q * (255 / 2));
 	rectangle(environment, pt_min, pt_max, q_color, -1, 8, 0);
 }
 
@@ -550,7 +564,8 @@ void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structur
 		int n_avoid = in_zone(inds, id, 330, 15, struc); // number of individals to avoid. [id,dist,angle,angle to neighbor]
 		int n_align = in_zone(inds, id, 330, 100, struc) - n_avoid; // number of individals to align to [id,dist,angle between directions]
 		int n_attract = in_zone(inds, id, 330, 200, struc) - (n_avoid + n_align); // number of individals to be attracted to [id,dist,angle to neighbor, turning angle]
-		bool alone = (n_avoid == 0 && n_align == 0 && n_attract > 0);
+
+		bool alone = (n_avoid == 0 && n_align < 5);
 
 		if (inds.lag[id] == 0 && inds.sample_rate[id] > distrib_sample(rd) && alone == 0){
 			inds.lag[id] = 10;
@@ -561,15 +576,14 @@ void sample(Individuals& inds, int quality[][n_cols], Mat& environment, Structur
 		}
 		else {
 			inds.lag[id] = inds.lag[id] - 1;
-			inds.sample_rate[id] = inds.sample_rate[id] + 1;
+			// inds.sample_rate[id] = inds.sample_rate[id] + 1;
 		}
 	}
 }
 
-double get_speed(Individuals inds, int id, Structure struc) {
+void get_speed(Individuals& inds, int id, Structure struc) {
 	int count = in_zone(inds, id, 180, 200, struc);
-	double speed_factor = 1 + 2 * count / num;
-	return speed_factor;
+	inds.speed_factor[id] = 1 + 2 * (double) count / (double) num;
 }
 
 int sum_array(int quality[][n_cols], Structure struc) {
@@ -618,7 +632,7 @@ void get_environment(Mat& environment, int quality[][n_cols], Structure struc) {
 		for (int y = 0; y < struc.h; y++) {
 			for (int x = 0; x < struc.w; x++) {
 				int q = quality[y / (struc.h / struc.rows)][x / (struc.w / struc.cols)];
-				environment.at<Vec3b>(y, x) = Vec3b(q * 25.5, q * 25.5, q * 25.5);
+				environment.at<Vec3b>(y, x) = Vec3b(q * (225/2), q * (225/2), q * (225/2));
 			}
 		}
 }
