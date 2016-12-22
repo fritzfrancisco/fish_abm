@@ -3,6 +3,7 @@
 *.lo
 *.o
 *.obj
+*.Rhistory
 
 # Precompiled Headers
 *.gch
@@ -22,7 +23,6 @@
 *.la
 *.a
 *.lib
-*.Rhistory
 
 # Executables
 *.exe

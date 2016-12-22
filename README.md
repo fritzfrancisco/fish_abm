@@ -59,7 +59,7 @@ Image 2: First visualization of the agent based model with environment
 
   - the `speed_factor` [default=1] is calculated using the individuals in the front visual field (the number of individuals in front (-90,+90 degrees from head tail axis)) and the response radius of 100: speed_factor = 1 + ind_count divided by N/2 (N: Total Population). The more individuals are perceived ahead, the faster the individual will travel.
 
-  <img src="https://github.com/fritzfrancisco/fish_abm/blob/master/Social%20heat%20map.png" width="300">
+  <img src="https://github.com/fritzfrancisco/fish_abm/blob/master/social_heat_map.png" width="300">
 
   Image 2: Social force heat-map
 
